@@ -19,18 +19,22 @@ export const metadata: Metadata = {
   description: "A production-ready, scalable web application for clubs and learning communities.",
 };
 
+import { ClerkProvider } from "@clerk/nextjs";
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${inter.variable} antialiased bg-background text-foreground`}
-      >
-        {children}
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en">
+        <body
+          className={`${inter.variable} antialiased bg-background text-foreground`}
+        >
+          {children}
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }
