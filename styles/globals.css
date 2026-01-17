@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+    --color-background: #f0fdf4;
+    --color-foreground: #022c22;
+
+    --color-card: #ffffff;
+    --color-card-foreground: #022c22;
+
+    --color-primary: #10b981;
+    --color-primary-foreground: #ffffff;
+}
+
+body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: system-ui, sans-serif;
+}
+
+.glass-card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
