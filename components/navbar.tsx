@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { User, LogOut, Settings, Bell, Search, Menu, X, Home, Users, CheckSquare, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { signout } from "@/app/auth/actions";
+import { SignOutButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import type { GlobalRole } from "@/lib/permissions";
 
@@ -24,29 +24,21 @@ export function Navbar({ user }: NavbarProps) {
     const pathname = usePathname();
 
     const getNavLinks = () => {
-        switch (user.role) {
-            case 'super_admin':
-                return [
-                    { href: "/dashboard", label: "Home", icon: Home },
-                    { href: "/dashboard/groups", label: "Groups", icon: Users },
-                    { href: "/dashboard/admins", label: "Dashboard Admins", icon: Users },
-                ];
-            case 'top_admin':
-            case 'admin':
-                return [
-                    { href: "/dashboard", label: "Home", icon: Home },
-                    { href: "/dashboard/groups", label: "Groups", icon: Users },
-                    { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare },
-                    { href: "/dashboard/profile", label: "Profile", icon: User },
-                ];
-            default: // student
-                return [
-                    { href: "/dashboard", label: "Home", icon: Home },
-                    { href: "/dashboard/my-groups", label: "Groups", icon: Users },
-                    { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare },
-                    { href: "/dashboard/profile", label: "Profile", icon: User },
-                ];
+        const commonLinks = [
+            { href: "/dashboard", label: "Home", icon: Home },
+            { href: "/dashboard/groups", label: "Groups", icon: Users },
+            { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare },
+            { href: "/dashboard/profile", label: "Profile", icon: User },
+        ];
+
+        if (user.role === 'super_admin') {
+            return [
+                ...commonLinks,
+                { href: "/dashboard/admins", label: "Dashboard Admins", icon: Users },
+            ];
         }
+
+        return commonLinks;
     };
 
     const navLinks = getNavLinks();
@@ -56,14 +48,11 @@ export function Navbar({ user }: NavbarProps) {
 
     return (
         <nav className="bg-white border-b sticky top-0 z-50">
-            <div className="container mx-auto px-4">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between items-center h-16">
                     {/* Logo */}
-                    <Link href="/dashboard" className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center">
-                            <span className="font-bold text-white">TS</span>
-                        </div>
-                        <span className="font-bold text-xl text-slate-900 tracking-tight hidden md:block">TaskSphere</span>
+                    <Link href="/" className="flex items-center gap-1">
+                        <span className="font-bold text-xl tracking-tight bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent">TaskSphere</span>
                     </Link>
 
                     {/* Desktop Nav */}
@@ -118,12 +107,12 @@ export function Navbar({ user }: NavbarProps) {
                                             </p>
                                         </div>
 
-                                        <form action={signout}>
-                                            <button type="submit" className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                        <SignOutButton>
+                                            <button className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                                                 <LogOut className="w-4 h-4" />
                                                 Sign Out
                                             </button>
-                                        </form>
+                                        </SignOutButton>
                                     </div>
                                 </>
                             )}

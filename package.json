@@ -11,8 +11,11 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.12",
     "@clerk/nextjs": "^6.36.8",
+    "@radix-ui/react-label": "^2.1.8",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.90.1",
+    "@tiptap/extension-image": "^3.15.3",
+    "@tiptap/extension-placeholder": "^3.15.3",
     "@tiptap/react": "^3.15.3",
     "@tiptap/starter-kit": "^3.15.3",
     "ai": "^6.0.39",

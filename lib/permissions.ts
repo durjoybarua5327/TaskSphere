@@ -46,29 +46,52 @@ export async function hasGroupPermission(userId: string, groupId: string, requir
     return hierarchy[role] >= hierarchy[requiredRole]
 }
 
-export async function getGlobalRole(userId: string): Promise<GlobalRole> {
-    if (await isSuperAdmin(userId)) return 'super_admin'
-
+export async function getGlobalRole(userId: string, userEmail?: string): Promise<GlobalRole> {
     const supabase = await createClient()
-    // Check if user is top_admin in ANY group
-    const { data: topAdminData } = await supabase
-        .from('group_members')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('role', 'top_admin')
-        .limit(1)
 
-    if (topAdminData && topAdminData.length > 0) return 'top_admin'
+    // Run user check/creation and membership fetch in parallel
+    const [userResult, membershipsResult] = await Promise.all([
+        supabase
+            .from('users')
+            .select('id, is_super_admin')
+            .eq('id', userId)
+            .maybeSingle(),
+        supabase
+            .from('group_members')
+            .select('role')
+            .eq('user_id', userId)
+    ]);
 
-    // Check if user is admin in ANY group
-    const { data: adminData } = await supabase
-        .from('group_members')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('role', 'admin')
-        .limit(1)
+    let existingUser = userResult.data;
+    const memberships = membershipsResult.data || [];
 
-    if (adminData && adminData.length > 0) return 'admin'
+    // If user doesn't exist and we have an email, create them
+    if (!existingUser && userEmail) {
+        // We await this because we need the user to exist, but if we assume success or don't block
+        // we could optimize further. For safety, we keep it awaited, but the common path (user exists) is now faster.
+        const { error } = await supabase
+            .from('users')
+            .insert({
+                id: userId,
+                email: userEmail,
+                is_super_admin: false
+            });
 
-    return 'student'
+        if (!error) {
+            existingUser = { id: userId, is_super_admin: false };
+        }
+    }
+
+    // Check if super admin (from user table)
+    if (existingUser?.is_super_admin) return 'super_admin';
+
+    // Check roles from the already fetched memberships
+    // We already have all roles for this user, no need for more DB calls
+    const isTopAdmin = memberships.some(m => m.role === 'top_admin');
+    if (isTopAdmin) return 'top_admin';
+
+    const isAdmin = memberships.some(m => m.role === 'admin');
+    if (isAdmin) return 'admin';
+
+    return 'student';
 }

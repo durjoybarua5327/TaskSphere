@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, Outfit } from "next/font/google"; // Premium fonts
 import "@/styles/globals.css";
+import { ClerkProvider } from "@clerk/nextjs";
+import { GlobalNavbar } from "@/components/global-navbar";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -19,8 +21,6 @@ export const metadata: Metadata = {
   description: "A production-ready, scalable web application for clubs and learning communities.",
 };
 
-import { ClerkProvider } from "@clerk/nextjs";
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -31,7 +31,9 @@ export default function RootLayout({
       <html lang="en">
         <body
           className={`${inter.variable} antialiased bg-background text-foreground`}
+          suppressHydrationWarning
         >
+          <GlobalNavbar />
           {children}
         </body>
       </html>

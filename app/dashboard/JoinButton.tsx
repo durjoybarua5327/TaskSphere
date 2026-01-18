@@ -16,25 +16,25 @@ export default function JoinButton({ groupId, currentStatus }: { groupId: string
 
     if (currentStatus === 'member') {
         return (
-            <Button variant="outline" disabled className="w-full text-emerald-600 border-emerald-200 bg-emerald-50">
+            <Button variant="ghost" disabled className="w-full text-emerald-700 bg-emerald-50 border border-emerald-100 font-semibold cursor-default">
                 <Check className="w-4 h-4 mr-2" />
-                Member
+                Joined
             </Button>
         );
     }
 
     if (currentStatus === 'pending') {
         return (
-            <Button variant="outline" disabled className="w-full border-yellow-200 bg-yellow-50 text-yellow-700">
+            <Button variant="ghost" disabled className="w-full text-amber-700 bg-amber-50 border border-amber-100 font-semibold cursor-default">
                 <Clock className="w-4 h-4 mr-2" />
-                Requested
+                Pending
             </Button>
         );
     }
 
     if (currentStatus === 'rejected') {
         return (
-            <Button variant="destructive" disabled className="w-full">
+            <Button variant="ghost" disabled className="w-full text-red-600 bg-red-50 border border-red-100 font-semibold">
                 Rejected
             </Button>
         );
@@ -44,9 +44,9 @@ export default function JoinButton({ groupId, currentStatus }: { groupId: string
         <Button
             onClick={handleRequest}
             disabled={loading}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200"
+            className={`w-full font-semibold transition-all duration-300 ${loading ? 'bg-slate-100 text-slate-400' : 'bg-slate-900 hover:bg-slate-800 text-white shadow-lg shadow-slate-900/10 hover:shadow-slate-900/20 hover:-translate-y-0.5'}`}
         >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Request to Join"}
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Join Group"}
         </Button>
     );
 }

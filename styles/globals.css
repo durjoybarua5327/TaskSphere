@@ -24,3 +24,153 @@ body {
     border-radius: 0.75rem;
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
+
+/* Custom Animations */
+@keyframes gradient-x {
+
+    0%,
+    100% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+}
+
+@keyframes blob {
+
+    0%,
+    100% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    25% {
+        transform: translate(20px, -50px) scale(1.1);
+    }
+
+    50% {
+        transform: translate(-20px, 20px) scale(0.9);
+    }
+
+    75% {
+        transform: translate(50px, 50px) scale(1.05);
+    }
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-gradient-x {
+    animation: gradient-x 3s ease infinite;
+}
+
+.animate-blob {
+    animation: blob 7s infinite;
+}
+
+.animate-fade-in {
+    animation: fade-in 1s ease-out;
+}
+
+.animation-delay-2000 {
+    animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+    animation-delay: 4s;
+}
+
+/* Smooth Scroll */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #10b981, #14b8a6);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #059669, #0d9488);
+}
+
+/* Tiptap Code Block Styling (LeetCode Style) */
+.ProseMirror pre {
+    background: #282c34;
+    color: #abb2bf;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+}
+
+.ProseMirror pre code {
+    color: inherit;
+    padding: 0;
+    background: none;
+    font-size: 0.875rem;
+}
+
+/* Tiptap Typography Styling */
+.ProseMirror h1 {
+    font-size: 2em;
+    font-weight: 700;
+    margin-top: 0.75em;
+    margin-bottom: 0.5em;
+    line-height: 1.25;
+}
+
+.ProseMirror h2 {
+    font-size: 1.5em;
+    font-weight: 600;
+    margin-top: 0.75em;
+    margin-bottom: 0.5em;
+    line-height: 1.35;
+}
+
+.ProseMirror ul {
+    list-style-type: disc;
+    padding-left: 1.5em;
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+.ProseMirror ol {
+    list-style-type: decimal;
+    padding-left: 1.5em;
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+.ProseMirror blockquote {
+    border-left: 3px solid #cbd5e1;
+    padding-left: 1rem;
+    margin-left: 0;
+    color: #64748b;
+    font-style: italic;
+}
+
+.ProseMirror p {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+}

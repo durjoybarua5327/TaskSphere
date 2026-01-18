@@ -10,7 +10,7 @@ export async function createGroup(prevState: any, formData: FormData) {
     const { userId } = await auth();
 
     if (!userId) {
-        return { error: "Unauthorized" };
+        return { error: "Unauthorized", success: null };
     }
 
     // 1. Verify Superadmin
@@ -23,14 +23,14 @@ export async function createGroup(prevState: any, formData: FormData) {
         .single();
 
     if (!currentUser?.is_super_admin) {
-        return { error: "Permission denied: Superadmin access required." };
+        return { error: "Permission denied: Superadmin access required.", success: null };
     }
 
     const groupName = formData.get("groupName") as string;
     const topAdminEmail = formData.get("topAdminEmail") as string;
 
     if (!groupName || !topAdminEmail) {
-        return { error: "Group name and Top Admin email are required." };
+        return { error: "Group name and Top Admin email are required.", success: null };
     }
 
     // 2. Check if user with email exists
@@ -41,7 +41,7 @@ export async function createGroup(prevState: any, formData: FormData) {
         .single();
 
     if (userError || !targetUser) {
-        return { error: `User with email '${topAdminEmail}' not found. They must have an account first.` };
+        return { error: `User with email '${topAdminEmail}' not found. They must have an account first.`, success: null };
     }
 
     // 3. Check for Duplicate Group Name
@@ -52,7 +52,7 @@ export async function createGroup(prevState: any, formData: FormData) {
         .single();
 
     if (existingGroup) {
-        return { error: "A group with this name already exists." };
+        return { error: "A group with this name already exists.", success: null };
     }
 
     // 4. Create Group
@@ -68,7 +68,7 @@ export async function createGroup(prevState: any, formData: FormData) {
         .single();
 
     if (createError) {
-        return { error: "Failed to create group: " + createError.message };
+        return { error: "Failed to create group: " + createError.message, success: null };
     }
 
     // 5. Add user as Top Admin in group_members
@@ -81,9 +81,9 @@ export async function createGroup(prevState: any, formData: FormData) {
     if (memberError) {
         // Cleanup: try to delete the group if member creation fails? 
         // For now returning error, manual cleanup might be needed or improve logic with stored procedure.
-        return { error: "Group created but failed to assign admin: " + memberError.message };
+        return { error: "Group created but failed to assign admin: " + memberError.message, success: null };
     }
 
     revalidatePath("/super-admin");
-    return { success: `Group '${groupName}' created successfully with Top Admin: ${topAdminEmail}` };
+    return { success: `Group '${groupName}' created successfully with Top Admin: ${topAdminEmail}`, error: null };
 }
