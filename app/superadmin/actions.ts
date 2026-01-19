@@ -84,6 +84,6 @@ export async function createGroup(prevState: any, formData: FormData) {
         return { error: "Group created but failed to assign admin: " + memberError.message, success: null };
     }
 
-    revalidatePath("/super-admin");
+    revalidatePath("/superadmin");
     return { success: `Group '${groupName}' created successfully with Top Admin: ${topAdminEmail}`, error: null };
 }

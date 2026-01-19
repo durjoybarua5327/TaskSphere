@@ -1,46 +1,52 @@
-import { createClient } from "@/lib/supabase-server";
+import { createClerkSupabaseClient } from "@/lib/supabase-clerk";
 import { currentUser } from "@clerk/nextjs/server";
-import { PostFeed } from "@/components/posts/PostFeed";
-import { ShieldAlert, Info } from "lucide-react";
-
-async function getData() {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    const userId = user?.id;
-
-    // Get posts
-    const { data: posts } = await supabase
-        .from("posts")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-    return { posts: posts || [], userId };
-}
+import { redirect } from "next/navigation";
 
 export default async function DashboardPage() {
-    const { posts, userId } = await getData();
     const user = await currentUser();
 
-    return (
-        <div className="space-y-8 pb-12">
-            {/* Header Section */}
-            <div className="relative bg-white p-8 rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-50 rounded-full blur-3xl -mr-16 -mt-16 opacity-50" />
-                <div className="relative z-10">
-                    <h1 className="text-4xl font-bold text-slate-900 tracking-tight mb-2">
-                        Welcome, <span className="text-emerald-600">{user?.firstName || 'Scholar'}</span>
-                    </h1>
-                    <p className="text-lg text-slate-600 max-w-2xl">
-                        Here's what's happening in your learning community.
-                    </p>
-                </div>
-            </div>
+    if (!user) {
+        redirect("/sign-in");
+    }
 
-            {/* Post Feed Section */}
-            <section className="max-w-5xl mx-auto">
-                <PostFeed posts={posts} currentUserId={userId || ''} />
-            </section>
-        </div>
-    );
+    // 1. Hardcoded Super Admin Check (Safety net)
+    const email = user.emailAddresses?.[0]?.emailAddress;
+    if (email === "durjoybarua8115@gmail.com") {
+        redirect("/superadmin");
+    }
+
+    const supabase = await createClerkSupabaseClient();
+
+    // 2. Database Role Checks
+    try {
+        // Check User Profile for Super Admin
+        const { data: dbUser } = await supabase
+            .from("users")
+            .select("is_super_admin")
+            .eq("id", user.id)
+            .single();
+
+        if (dbUser?.is_super_admin) {
+            redirect("/superadmin");
+        }
+
+        // Check Group Memberships for Admin/Top Admin roles
+        const { data: adminRoles } = await supabase
+            .from("group_members")
+            .select("role")
+            .eq("user_id", user.id)
+            .in("role", ["admin", "top_admin"])
+            .limit(1);
+
+        if (adminRoles && adminRoles.length > 0) {
+            redirect("/admin");
+        }
+
+    } catch (error) {
+        console.error("Error checking user roles:", error);
+        // Fallback or continue to student if error
+    }
+
+    // 3. Default to Student Dashboard
+    redirect("/student");
 }

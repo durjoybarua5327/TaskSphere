@@ -38,7 +38,13 @@ export function GlobalNavbar() {
         }
     };
 
-    if (pathname.startsWith('/dashboard')) {
+    // Hide Navbar on specific authenticated routes
+    if (
+        pathname.startsWith('/dashboard') ||
+        pathname.startsWith('/superadmin') ||
+        pathname.startsWith('/admin') ||
+        pathname.startsWith('/student')
+    ) {
         return null;
     }
 
