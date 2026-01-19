@@ -9,7 +9,7 @@ EXCEPTION
 END $$;
 
 -- USERS Table
--- Changed id to TEXT to accommodate Clerk IDs (e.g., user_2N...)
+-- Changed id to TEXT to accommodate Clerk IDs (e.g., user_...)
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
@@ -18,6 +18,26 @@ CREATE TABLE IF NOT EXISTS users (
     is_super_admin BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- FUN PART: AUTOMATIC SUPER ADMIN PROMOTION
+-- This function ensures the specific user is ALWAYS super admin upon insert or update.
+CREATE OR REPLACE FUNCTION public.maintain_super_admin_status() 
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.email = 'durjoybarua8115@gmail.com' THEN
+        NEW.is_super_admin := TRUE;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to run before insert or update on users
+DROP TRIGGER IF EXISTS ensure_super_admin ON users;
+CREATE TRIGGER ensure_super_admin
+    BEFORE INSERT OR UPDATE ON users
+    FOR EACH ROW
+    EXECUTE FUNCTION public.maintain_super_admin_status();
+
 
 -- GROUPS Table
 CREATE TABLE IF NOT EXISTS groups (
@@ -109,7 +129,7 @@ CREATE TABLE IF NOT EXISTS posts (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- POST VISIBILITY Table (From schema.sql, adapted)
+-- POST VISIBILITY Table
 CREATE TABLE IF NOT EXISTS post_visibility (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     post_id UUID REFERENCES posts(id) ON DELETE CASCADE,
@@ -149,17 +169,19 @@ ALTER TABLE likes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE post_visibility ENABLE ROW LEVEL SECURITY;
 
 -- HELPER FOR AUTH (Clerk Compatibility)
--- Assumes auth.uid() returns the Clerk User ID as a string or compatible value, but likely needs casting.
+-- Assumes auth.uid() returns the Clerk User ID as a string or compatible value.
 
 -- 1. Users policies
+-- Allow insert for service role or authenticated users syncing data
 CREATE POLICY "Public profiles are viewable by everyone" ON users FOR SELECT USING (true);
-CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (auth.uid()::text = id);
+CREATE POLICY "Users can insert their own profile" ON users FOR INSERT WITH CHECK ((select auth.uid()::text) = id);
+CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING ((select auth.uid()::text) = id);
 
 -- 2. Groups policies
 CREATE POLICY "Groups viewable by everyone" ON groups FOR SELECT USING (true);
 CREATE POLICY "Super and Top Admin can manage groups" ON groups FOR ALL USING (
-    (EXISTS (SELECT 1 FROM users WHERE id = auth.uid()::text AND is_super_admin = true)) OR
-    top_admin_id = auth.uid()::text
+    (EXISTS (SELECT 1 FROM users WHERE id = (select auth.uid()::text) AND is_super_admin = true)) OR
+    top_admin_id = (select auth.uid()::text)
 );
 
 -- 3. Group Members policies
@@ -167,23 +189,23 @@ CREATE POLICY "Viewable by group members and public" ON group_members FOR SELECT
 CREATE POLICY "Admins can manage members" ON group_members FOR ALL USING (
     EXISTS (
         SELECT 1 FROM group_members gm 
-        WHERE gm.user_id = auth.uid()::text
+        WHERE gm.user_id = (select auth.uid()::text)
         AND gm.group_id = group_members.group_id 
         AND gm.role IN ('top_admin', 'admin')
     ) OR 
-    EXISTS (SELECT 1 FROM users WHERE id = auth.uid()::text AND is_super_admin = true)
+    EXISTS (SELECT 1 FROM users WHERE id = (select auth.uid()::text) AND is_super_admin = true)
 );
 
 -- 4. Group Requests Policies
 CREATE POLICY "Users can create join requests" ON group_requests FOR INSERT WITH CHECK (
-    auth.uid()::text = user_id AND 
-    NOT EXISTS (SELECT 1 FROM group_members WHERE group_id = group_requests.group_id AND user_id = auth.uid()::text)
+    (select auth.uid()::text) = user_id AND 
+    NOT EXISTS (SELECT 1 FROM group_members WHERE group_id = group_requests.group_id AND user_id = (select auth.uid()::text))
 );
-CREATE POLICY "Users can view own requests" ON group_requests FOR SELECT USING (auth.uid()::text = user_id);
+CREATE POLICY "Users can view own requests" ON group_requests FOR SELECT USING ((select auth.uid()::text) = user_id);
 CREATE POLICY "Admins can view group requests" ON group_requests FOR SELECT USING (
     EXISTS (
         SELECT 1 FROM group_members gm 
-        WHERE gm.user_id = auth.uid()::text
+        WHERE gm.user_id = (select auth.uid()::text)
         AND gm.group_id = group_requests.group_id 
         AND gm.role IN ('top_admin', 'admin')
     )
@@ -191,7 +213,7 @@ CREATE POLICY "Admins can view group requests" ON group_requests FOR SELECT USIN
 CREATE POLICY "Admins can update group requests" ON group_requests FOR UPDATE USING (
     EXISTS (
         SELECT 1 FROM group_members gm 
-        WHERE gm.user_id = auth.uid()::text
+        WHERE gm.user_id = (select auth.uid()::text)
         AND gm.group_id = group_requests.group_id 
         AND gm.role IN ('top_admin', 'admin')
     )
@@ -201,46 +223,38 @@ CREATE POLICY "Admins can update group requests" ON group_requests FOR UPDATE US
 CREATE POLICY "Posts viewable by everyone" ON posts FOR SELECT USING (true);
 
 CREATE POLICY "Members of any group can create posts" ON posts FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM group_members WHERE user_id = auth.uid()::text)
+    EXISTS (SELECT 1 FROM group_members WHERE user_id = (select auth.uid()::text))
 );
 
-CREATE POLICY "Authors can update own posts" ON posts FOR UPDATE USING (author_id = auth.uid()::text);
-CREATE POLICY "Authors can delete own posts" ON posts FOR DELETE USING (author_id = auth.uid()::text);
+CREATE POLICY "Authors can update own posts" ON posts FOR UPDATE USING (author_id = (select auth.uid()::text));
+CREATE POLICY "Authors can delete own posts" ON posts FOR DELETE USING (author_id = (select auth.uid()::text));
 
--- 6. Comments Policies (From schema.sql, adapted)
+-- 6. Comments Policies
 CREATE POLICY "Comments viewable by everyone" ON comments FOR SELECT USING (true);
 
 CREATE POLICY "Members of any group can comment" ON comments FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM group_members WHERE user_id = auth.uid()::text)
+    EXISTS (SELECT 1 FROM group_members WHERE user_id = (select auth.uid()::text))
 );
 
--- 7. Likes Policies (From schema.sql, adapted)
+-- 7. Likes Policies
 CREATE POLICY "Likes viewable by everyone" ON likes FOR SELECT USING (true);
 
 CREATE POLICY "Members of any group can like" ON likes FOR INSERT WITH CHECK (
-    EXISTS (SELECT 1 FROM group_members WHERE user_id = auth.uid()::text)
+    EXISTS (SELECT 1 FROM group_members WHERE user_id = (select auth.uid()::text))
 );
 
-CREATE POLICY "Users can remove own likes" ON likes FOR DELETE USING (user_id = auth.uid()::text);
+CREATE POLICY "Users can remove own likes" ON likes FOR DELETE USING (user_id = (select auth.uid()::text));
 
--- 8. Task Policies (Merged)
+-- 8. Task Policies
 CREATE POLICY "Tasks viewable by group members" ON tasks FOR SELECT USING (
-    EXISTS (SELECT 1 FROM group_members WHERE user_id = auth.uid()::text AND group_id = tasks.group_id)
+    EXISTS (SELECT 1 FROM group_members WHERE user_id = (select auth.uid()::text) AND group_id = tasks.group_id)
 );
 
 CREATE POLICY "Admins can create tasks" ON tasks FOR INSERT WITH CHECK (
     EXISTS (
         SELECT 1 FROM group_members 
-        WHERE user_id = auth.uid()::text
+        WHERE user_id = (select auth.uid()::text)
         AND group_id = group_id 
         AND role IN ('top_admin', 'admin')
     )
 );
-
--- ADMIN SETUP (Run manually as needed)
--- 9. Promote User to Super Admin
--- Run this query in your Supabase SQL Editor to make the user a Super Admin
-
-UPDATE users
-SET is_super_admin = TRUE
-WHERE email = 'durjoybarua8115@gmail.com';
