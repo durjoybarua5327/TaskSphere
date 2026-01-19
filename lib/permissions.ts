@@ -1,12 +1,21 @@
 import { createClient } from '@/lib/supabase-server'
+import { createAdminClient } from '@/lib/supabase-admin'
 
 export type GroupRole = 'student' | 'admin' | 'top_admin'
 export type GlobalRole = 'super_admin' | 'top_admin' | 'admin' | 'student'
 
+
+// Check if user is super admin
+// Note: Removed caching due to Next.js constraints with cookies()
 export async function isSuperAdmin(userId: string): Promise<boolean> {
-    const supabase = await createClient()
-    const { data } = await supabase.from('users').select('is_super_admin').eq('id', userId).single()
-    return data?.is_super_admin ?? false
+    try {
+        const supabase = createAdminClient()
+        const { data } = await supabase.from('users').select('is_super_admin').eq('id', userId).single()
+        return data?.is_super_admin ?? false
+    } catch (error) {
+        console.error("isSuperAdmin check failed:", error);
+        return false;
+    }
 }
 
 export async function getGroupRole(userId: string, groupId: string): Promise<GroupRole | null> {
@@ -46,47 +55,55 @@ export async function hasGroupPermission(userId: string, groupId: string, requir
     return hierarchy[role] >= hierarchy[requiredRole]
 }
 
-export async function getGlobalRole(userId: string, userEmail?: string): Promise<GlobalRole> {
-    const supabase = await createClient()
 
-    // Run user check/creation and membership fetch in parallel
+export async function getGlobalRole(userId: string, userEmail?: string, userData?: { name?: string, imageUrl?: string }): Promise<GlobalRole> {
+    // Use admin client to bypass RLS for checking/creating users
+    let supabase;
+    try {
+        supabase = createAdminClient();
+    } catch (e) {
+        console.warn("Service role key missing, falling back to anon client:", e);
+        supabase = await createClient();
+    }
+
+    // Sync user to database if information is available
+    if (userEmail) {
+        // We use upsert without ignoreDuplicates to ensure we update profile info
+        // and trigger the database role assignment logic.
+        const { error } = await supabase
+            .from('users')
+            .upsert({
+                id: userId,
+                email: userEmail,
+                full_name: userData?.name || null,
+                avatar_url: userData?.imageUrl || null,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
+
+        if (error) {
+            console.warn("Syncing user to Supabase error:", error.message);
+        }
+    }
+
+    // Now fetch user role and memberships
     const [userResult, membershipsResult] = await Promise.all([
         supabase
             .from('users')
-            .select('id, is_super_admin')
+            .select('is_super_admin')
             .eq('id', userId)
-            .maybeSingle(),
+            .single(),
         supabase
             .from('group_members')
             .select('role')
             .eq('user_id', userId)
     ]);
 
-    let existingUser = userResult.data;
+    const isSuperAdmin = userResult.data?.is_super_admin ?? false;
     const memberships = membershipsResult.data || [];
 
-    // If user doesn't exist and we have an email, create them
-    if (!existingUser && userEmail) {
-        // We await this because we need the user to exist, but if we assume success or don't block
-        // we could optimize further. For safety, we keep it awaited, but the common path (user exists) is now faster.
-        const { error } = await supabase
-            .from('users')
-            .insert({
-                id: userId,
-                email: userEmail,
-                is_super_admin: false
-            });
-
-        if (!error) {
-            existingUser = { id: userId, is_super_admin: false };
-        }
-    }
-
-    // Check if super admin (from user table)
-    if (existingUser?.is_super_admin) return 'super_admin';
+    if (isSuperAdmin) return 'super_admin';
 
     // Check roles from the already fetched memberships
-    // We already have all roles for this user, no need for more DB calls
     const isTopAdmin = memberships.some(m => m.role === 'top_admin');
     if (isTopAdmin) return 'top_admin';
 

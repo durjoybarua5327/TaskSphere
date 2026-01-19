@@ -1,40 +1,50 @@
-"use client";
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { Navbar } from "@/components/navbar";
+import { AdminChatbot } from "@/components/admin-chatbot";
+import { getGlobalRole } from "@/lib/permissions";
+import { redirect } from "next/navigation";
 
-import Link from "next/link";
-import { GraduationCap } from "lucide-react";
-import { ProfileDropdown } from "@/components/profile-dropdown";
-
-export default function StudentLayout({
+export default async function DashboardLayout({
     children,
 }: {
     children: React.ReactNode;
 }) {
+    const { userId } = await auth();
+    const user = await currentUser();
+
+    if (!userId || !user) {
+        redirect("/sign-in");
+    }
+
+    const userEmail = user.emailAddresses[0]?.emailAddress || '';
+
+    let role: import("@/lib/permissions").GlobalRole;
+    try {
+        role = await getGlobalRole(userId, userEmail);
+    } catch (error) {
+        console.error("Layout Role Check Error (DB might be unreachable):", error);
+        role = 'student'; // Fallback
+    }
+
+    const showChatbot = role === 'admin' || role === 'top_admin';
+
     return (
-        <div className="min-h-screen bg-slate-50">
-            {/* Top Navbar */}
-            <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16">
-                        {/* Logo/Brand */}
-                        <div className="flex items-center gap-3">
-                            <div className="h-9 w-9 bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-md">
-                                <GraduationCap className="text-white w-5 h-5" />
-                            </div>
-                            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-indigo-800">
-                                Student Portal
-                            </span>
-                        </div>
+        <div className="min-h-screen bg-slate-50 relative">
+            <Navbar
+                user={{
+                    name: user.firstName && user.lastName
+                        ? `${user.firstName} ${user.lastName}`
+                        : user.emailAddresses[0]?.emailAddress || 'User',
+                    email: user.emailAddresses[0]?.emailAddress || '',
+                    role: role
+                }}
+            />
 
-                        {/* User Menu */}
-                        <ProfileDropdown role="Student" />
-                    </div>
-                </div>
-            </nav>
-
-            {/* Main Content */}
-            <main>
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {children}
             </main>
+
+            {showChatbot && <AdminChatbot />}
         </div>
     );
 }

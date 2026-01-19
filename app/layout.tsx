@@ -3,6 +3,7 @@ import { Inter, Outfit } from "next/font/google"; // Premium fonts
 import "@/styles/globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
 import { GlobalNavbar } from "@/components/global-navbar";
+import { ModalProvider } from "@/components/providers/modal-provider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -33,8 +34,10 @@ export default function RootLayout({
           className={`${inter.variable} antialiased bg-background text-foreground`}
           suppressHydrationWarning
         >
-          <GlobalNavbar />
-          {children}
+          <ModalProvider>
+            <GlobalNavbar />
+            {children}
+          </ModalProvider>
         </body>
       </html>
     </ClerkProvider>

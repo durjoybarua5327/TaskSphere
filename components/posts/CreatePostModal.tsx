@@ -4,20 +4,29 @@ import { useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { RichTextEditor } from "@/components/editor/RichTextEditor";
 import { Button } from "@/components/ui/button";
-import { createPost } from "@/app/dashboard/actions";
-import { Loader2 } from "lucide-react";
+import { createPost, deletePost, updatePost } from "@/app/student/actions";
+import { Loader2, X, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useModal } from "@/components/providers/modal-provider";
 
 interface CreatePostModalProps {
     isOpen: boolean;
     onClose: () => void;
+    editData?: {
+        id: string;
+        title: string | null;
+        content: string;
+        tags: string[];
+        images: string[];
+    };
 }
 
-export function CreatePostModal({ isOpen, onClose }: CreatePostModalProps) {
-    const [title, setTitle] = useState("");
-    const [content, setContent] = useState("");
-    const [tags, setTags] = useState<string[]>([]);
+export function CreatePostModal({ isOpen, onClose, editData }: CreatePostModalProps) {
+    const [title, setTitle] = useState(editData?.title || "");
+    const [content, setContent] = useState(editData?.content || "");
+    const [tags, setTags] = useState<string[]>(editData?.tags || []);
     const [currentTag, setCurrentTag] = useState("");
-    const [images, setImages] = useState<string[]>([]); // Stores Base64 strings
+    const [images, setImages] = useState<string[]>(editData?.images || []);
     const [loading, setLoading] = useState(false);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -49,29 +58,64 @@ export function CreatePostModal({ isOpen, onClose }: CreatePostModalProps) {
         setTags(tags.filter(t => t !== tagToRemove));
     };
 
+    const router = useRouter();
+
     const handleSubmit = async () => {
         if (!content || content === '<p></p>') return;
 
         setLoading(true);
 
-        const result = await createPost({
-            title,
+        const data = {
+            title: title || undefined,
             content,
-            tags: tags,
-            images: images
-        });
+            tags,
+            images
+        };
+
+        const result = editData
+            ? await updatePost(editData.id, data)
+            : await createPost(data);
 
         setLoading(false);
 
         if (result.success) {
-            setTitle("");
-            setContent("");
-            setTags([]);
-            setImages([]);
+            if (!editData) {
+                setTitle("");
+                setContent("");
+                setTags([]);
+                setImages([]);
+            }
+            router.refresh();
             onClose();
         } else {
-            console.error("Failed to post:", result.error);
+            console.error(editData ? "Failed to update:" : "Failed to post:", result.error);
         }
+    };
+
+    const { openModal } = useModal();
+
+    const handleDelete = async () => {
+        if (!editData) return;
+
+        openModal({
+            type: "delete",
+            title: "Delete Post",
+            description: "Are you sure you want to delete this post?",
+            isDestructive: true,
+            confirmText: "Delete",
+            onConfirm: async () => {
+                setLoading(true);
+                const result = await deletePost(editData.id);
+                setLoading(false);
+
+                if (result.success) {
+                    router.refresh();
+                    onClose();
+                } else {
+                    console.error("Failed to delete post:", result.error);
+                }
+            },
+        });
     };
 
     return (
@@ -193,12 +237,24 @@ export function CreatePostModal({ isOpen, onClose }: CreatePostModalProps) {
                             className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
                         >
                             {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                            Publish Post
+                            {editData ? "Update Post" : "Publish Post"}
                         </Button>
 
+                        {editData && (
+                            <Button
+                                onClick={handleDelete}
+                                disabled={loading}
+                                variant="outline"
+                                className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                            >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete Post
+                            </Button>
+                        )}
                     </div>
                 </div>
             </div>
         </Modal>
     );
 }
+

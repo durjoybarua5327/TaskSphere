@@ -1,21 +1,17 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { isSuperAdmin } from "@/lib/permissions";
-import { getGroups, getGroupRequests } from "../actions";
-import { GroupsClient } from "./groups-client";
+import { getConversations } from "../actions";
+import { MessagesClient } from "./messages-client";
 
-export default async function GroupsPage() {
+export default async function MessagesPage() {
     const { userId } = await auth();
 
     if (!userId) {
         redirect("/sign-in");
     }
 
-    const [isSuperAdminUser, groupsResult, requestsResult] = await Promise.all([
-        isSuperAdmin(userId),
-        getGroups(),
-        getGroupRequests(),
-    ]);
+    const isSuperAdminUser = await isSuperAdmin(userId);
 
     if (!isSuperAdminUser) {
         return (
@@ -26,10 +22,12 @@ export default async function GroupsPage() {
         );
     }
 
+    const result = await getConversations();
+
     return (
-        <GroupsClient
-            initialGroups={groupsResult.groups || []}
-            initialRequests={requestsResult.requests || []}
+        <MessagesClient
+            conversations={result.conversations || []}
+            currentUserId={userId}
         />
     );
 }

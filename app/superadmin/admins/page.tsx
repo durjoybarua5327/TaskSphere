@@ -1,11 +1,28 @@
-export default function SuperAdminAdmins() {
-    return (
-        <div className="space-y-6">
-            <h1 className="text-3xl font-bold text-slate-900">Manage Admins</h1>
-            <p className="text-slate-600">Oversee top admins and platform administrators.</p>
-            <div className="bg-white border border-slate-200 rounded-xl p-8 flex items-center justify-center h-64 border-dashed">
-                <p className="text-slate-400">Admin Directory Coming Soon</p>
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { isSuperAdmin } from "@/lib/permissions";
+import { getAdmins } from "../actions";
+import { AdminsClient } from "./admins-client";
+
+export default async function AdminsPage() {
+    const { userId } = await auth();
+
+    if (!userId) {
+        redirect("/sign-in");
+    }
+
+    const isSuperAdminUser = await isSuperAdmin(userId);
+
+    if (!isSuperAdminUser) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-800">
+                <h1 className="text-4xl font-bold mb-4">403 Forbidden</h1>
+                <p className="text-lg">You do not have permission to access this area.</p>
             </div>
-        </div>
-    );
+        );
+    }
+
+    const result = await getAdmins();
+
+    return <AdminsClient admins={result.admins || []} />;
 }

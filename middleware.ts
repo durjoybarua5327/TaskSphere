@@ -6,7 +6,8 @@ const isPublicRoute = createRouteMatcher([
     "/",
     "/sign-in(.*)",
     "/sign-up(.*)",
-    "/api/webhooks(.*)"
+    "/api/webhooks(.*)",
+    "/debug(.*)" // Allow debug page
 ]);
 
 const isLandingOrAuthRoute = createRouteMatcher([
@@ -15,13 +16,22 @@ const isLandingOrAuthRoute = createRouteMatcher([
     "/sign-up(.*)"
 ]);
 
+
 // Protect all other routes
 export default clerkMiddleware(async (auth, request) => {
     const { userId } = await auth();
 
-    // If user is authenticated and visiting landing page or auth pages, redirect to dashboard
+    // If user is authenticated and visiting landing page or auth pages
+    // Skip the redirect - let the HOME PAGE (client side) handle the role-based redirection
+    // This allows the homepage to load, and then redirect the user to their specific panel.
+    // If we redirect here, we don't know the role yet easily.
     if (userId && isLandingOrAuthRoute(request)) {
-        return NextResponse.redirect(new URL('/dashboard', request.url));
+        const url = new URL(request.url);
+        // If we are at root, do NOTHING, let page.tsx handle it.
+        // If we are at /sign-in or /sign-up, stick there (Clerk handles its own redirect).
+        // Actually, if logged in at /sign-in, Clerk might behave oddly if we don't redirect.
+        // But Clerk usually redirects to AFTER_SIGN_IN_URL.
+        return;
     }
 
     if (!isPublicRoute(request)) {

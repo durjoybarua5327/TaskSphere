@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { User, LogOut, Settings, Bell, Search, Menu, X, Home, Users, CheckSquare, LayoutDashboard } from "lucide-react";
+import { User, LogOut, Settings, Bell, Search, Menu, X, Home, Users, CheckSquare, LayoutDashboard, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SignOutButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
@@ -23,22 +23,32 @@ export function Navbar({ user }: NavbarProps) {
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const pathname = usePathname();
 
+
     const getNavLinks = () => {
         const commonLinks = [
-            { href: "/dashboard", label: "Home", icon: Home },
-            { href: "/dashboard/groups", label: "Groups", icon: Users },
-            { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare },
-            { href: "/dashboard/profile", label: "Profile", icon: User },
+            { href: "/student", label: "Home", icon: Home },
+            { href: "/student/groups", label: "Groups", icon: Users },
+            { href: "/student/tasks", label: "Tasks", icon: CheckSquare },
         ];
+
+        // Messages link differs by role
+        const messagesLink = user.role === 'super_admin'
+            ? { href: "/superadmin/messages", label: "Messages", icon: MessageSquare }
+            : { href: "/student/messages", label: "Messages", icon: MessageSquare };
 
         if (user.role === 'super_admin') {
             return [
                 ...commonLinks,
-                { href: "/dashboard/admins", label: "Dashboard Admins", icon: Users },
+                messagesLink,
+                { href: "/student/profile", label: "Profile", icon: User },
             ];
         }
 
-        return commonLinks;
+        return [
+            ...commonLinks,
+            messagesLink,
+            { href: "/student/profile", label: "Profile", icon: User },
+        ];
     };
 
     const navLinks = getNavLinks();
@@ -50,8 +60,9 @@ export function Navbar({ user }: NavbarProps) {
         <nav className="bg-white border-b sticky top-0 z-50">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between items-center h-16">
+
                     {/* Logo */}
-                    <Link href="/" className="flex items-center gap-1">
+                    <Link href="/student" className="flex items-center gap-1">
                         <span className="font-bold text-xl tracking-tight bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent">TaskSphere</span>
                     </Link>
 
@@ -100,6 +111,8 @@ export function Navbar({ user }: NavbarProps) {
                                         onClick={() => setIsProfileOpen(false)}
                                     />
                                     <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-100 z-50 p-2 animate-in fade-in zoom-in-95 duration-200">
+
+
                                         <div className="px-3 py-2 border-b border-slate-100 mb-2">
                                             <p className="font-medium text-slate-900 truncate">{user.name}</p>
                                             <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold mt-1">

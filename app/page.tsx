@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -7,34 +8,58 @@ import {
   Shield,
   Users,
   GraduationCap,
-  Target,
-  Globe,
-  Github,
   Sparkles,
-  CheckCircle2,
-  TrendingUp,
   Zap,
   Award,
-  ChevronRight,
-  Star,
-  Clock,
+  Globe,
+  Github,
   BarChart3,
-  FileText,
-  MessageSquare,
-  Layers
+  Loader2
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import profilePic from "./profile/profile.jpeg";
+import { useAuth, useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import { getGlobalRole } from "@/lib/permissions";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
+  const { isSignedIn, userId, isLoaded } = useAuth();
+  const { user } = useUser();
+  const router = useRouter();
 
+
+  // Optimize the redirection logic to be faster and cleaner
   useEffect(() => {
-    setIsVisible(true);
-  }, []);
+    if (!isLoaded) return;
+
+    if (isSignedIn && userId) {
+      // Show loading state immediately to avoid flashing the landing page
+      setIsVisible(false); // Reuse existing state to hide landing content
+
+      fetch('/api/get-role')
+        .then(res => res.json())
+        .then(data => {
+          const role = data.role;
+          if (role === 'super_admin') router.replace('/superadmin');
+          else if (role === 'admin' || role === 'top_admin') router.replace('/admin');
+          else router.replace('/student');
+        })
+        .catch(() => router.replace('/student'));
+    }
+  }, [isLoaded, isSignedIn, userId, router]);
+
+  // If checking auth or logged in, show a loader instead of the landing page
+  if (!isLoaded || (isSignedIn && userId)) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white">
