@@ -47,45 +47,6 @@ export default async function MessagesPage() {
                 </div>
             </div>
 
-            {/* Create New Request */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Link href="/dashboard/messages/new?method=manual">
-                    <div className="bg-white border border-slate-200 rounded-2xl p-8 hover:shadow-lg transition-all cursor-pointer h-full">
-                        <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
-                                <Send className="w-6 h-6 text-indigo-600" />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-slate-900 mb-2">
-                                    Manual Request
-                                </h3>
-                                <p className="text-slate-600 text-sm">
-                                    Fill out a form with group details and submit directly to the super admin
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </Link>
-
-                <Link href="/dashboard/messages/new?method=ai">
-                    <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-2xl p-8 hover:shadow-lg transition-all cursor-pointer h-full">
-                        <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                                <Bot className="w-6 h-6 text-purple-600" />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
-                                    AI-Assisted Request
-                                    <span className="text-xs bg-purple-200 text-purple-700 px-2 py-1 rounded-full">NEW</span>
-                                </h3>
-                                <p className="text-slate-600 text-sm">
-                                    Chat with AI to build your request step-by-step with intelligent guidance
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </Link>
-            </div>
 
             {/* Your Requests */}
             <div>

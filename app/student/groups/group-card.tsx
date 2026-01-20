@@ -100,7 +100,7 @@ export function GroupCard({ group, isMember, userId }: { group: Group; isMember:
                     <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => window.location.href = `/dashboard/groups/${group.id}`}
+                        onClick={() => window.location.href = `/student/groups/${group.id}`}
                     >
                         View Group
                     </Button>

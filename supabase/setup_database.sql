@@ -29,10 +29,19 @@ CREATE TABLE IF NOT EXISTS users (
     institute_name TEXT,
     is_super_admin BOOLEAN DEFAULT FALSE,
     ai_enabled BOOLEAN DEFAULT TRUE,
+    portfolio_url TEXT,
     banned_until TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Add columns if they don't exist (for updates to existing tables)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'portfolio_url') THEN
+        ALTER TABLE users ADD COLUMN portfolio_url TEXT;
+    END IF;
+END $$;
 
 -- GROUPS Table
 CREATE TABLE IF NOT EXISTS groups (
@@ -105,6 +114,18 @@ CREATE TABLE IF NOT EXISTS comments (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- NOTIFICATIONS Table
+CREATE TABLE IF NOT EXISTS notifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    actor_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT CHECK (type IN ('like', 'comment', 'system')),
+    post_id UUID REFERENCES posts(id) ON DELETE CASCADE,
+    message TEXT,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- MESSAGES Table (Direct Messenger System)
 CREATE TABLE IF NOT EXISTS messages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -172,16 +193,65 @@ CREATE TABLE IF NOT EXISTS ai_conversation_sessions (
 );
 
 -- ============================================
--- 3. INDEXES
+-- 3. INDEXES (Optimized for Performance)
 -- ============================================
 
+-- User indexes
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_is_super_admin ON users(is_super_admin) WHERE is_super_admin = true;
+
+-- Group indexes
 CREATE INDEX IF NOT EXISTS idx_groups_name ON groups(name);
+CREATE INDEX IF NOT EXISTS idx_groups_top_admin ON groups(top_admin_id);
+CREATE INDEX IF NOT EXISTS idx_groups_created_at ON groups(created_at DESC);
+
+-- Group members indexes (Composite for role-based queries)
+CREATE INDEX IF NOT EXISTS idx_members_user_role ON group_members(user_id, role);
 CREATE INDEX IF NOT EXISTS idx_members_group_user ON group_members(group_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_members_user_id ON group_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_members_role ON group_members(role);
+
+-- Group requests indexes
+CREATE INDEX IF NOT EXISTS idx_group_requests_status ON group_requests(status) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_group_requests_user ON group_requests(user_id);
+
+-- Post indexes (critical for performance)
 CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id);
+CREATE INDEX IF NOT EXISTS idx_posts_visibility_created ON posts(visibility, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC);
+
+-- Likes indexes (for join performance)
+CREATE INDEX IF NOT EXISTS idx_likes_post_id ON likes(post_id);
+CREATE INDEX IF NOT EXISTS idx_likes_user_id ON likes(user_id);
+CREATE INDEX IF NOT EXISTS idx_likes_post_user ON likes(post_id, user_id);
+
+-- Comments indexes
+CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id);
+CREATE INDEX IF NOT EXISTS idx_comments_user_id ON comments(user_id);
+CREATE INDEX IF NOT EXISTS idx_comments_created_at ON comments(created_at DESC);
+
+-- Notifications indexes
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read) WHERE is_read = false;
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
+
+-- Messages indexes
 CREATE INDEX IF NOT EXISTS idx_messages_sender_receiver ON messages(sender_id, receiver_id);
+CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
+
+-- Tasks and submissions indexes (Composite for ordering and group filtering)
+CREATE INDEX IF NOT EXISTS idx_tasks_group_created ON tasks(group_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_group_id ON tasks(group_id);
+CREATE INDEX IF NOT EXISTS idx_submissions_task_student ON submissions(task_id, student_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_task ON submissions(task_id);
+CREATE INDEX IF NOT EXISTS idx_submissions_student ON submissions(student_id);
+CREATE INDEX IF NOT EXISTS idx_scores_submission ON scores(submission_id);
+
+-- Group creation workflow indexes
 CREATE INDEX IF NOT EXISTS idx_group_creation_sender ON group_creation_messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_ai_sessions_user ON ai_conversation_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_sessions_active ON ai_conversation_sessions(is_active) WHERE is_active = true;
 
 -- ============================================
 -- 4. FUNCTIONS AND TRIGGERS
@@ -241,6 +311,7 @@ ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE group_creation_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_conversation_sessions ENABLE ROW LEVEL SECURITY;
 
 -- USERS Policies
@@ -301,6 +372,13 @@ CREATE POLICY "Authors can manage comments" ON comments FOR ALL USING (
     EXISTS (SELECT 1 FROM users WHERE id = (select auth.uid()::text) AND is_super_admin = true)
 );
 
+-- NOTIFICATIONS Policies
+DROP POLICY IF EXISTS "Users can view their own notifications" ON notifications;
+CREATE POLICY "Users can view their own notifications" ON notifications FOR SELECT USING (user_id = (select auth.uid()::text));
+
+DROP POLICY IF EXISTS "Users can mark as read" ON notifications;
+CREATE POLICY "Users can mark as read" ON notifications FOR UPDATE USING (user_id = (select auth.uid()::text));
+
 -- MESSAGES Policies
 DROP POLICY IF EXISTS "Users can view their own messages" ON messages;
 CREATE POLICY "Users can view their own messages" ON messages FOR SELECT USING (
@@ -313,11 +391,17 @@ CREATE POLICY "Users can send messages" ON messages FOR INSERT WITH CHECK (sende
 
 -- TASKS Policies
 DROP POLICY IF EXISTS "Tasks viewable by group members" ON tasks;
-CREATE POLICY "Tasks viewable by group members" ON tasks FOR SELECT USING (true);
+CREATE POLICY "Tasks viewable by group members" ON tasks FOR SELECT USING (
+    EXISTS (SELECT 1 FROM group_members WHERE group_id = tasks.group_id AND user_id = (select auth.uid()::text)) OR
+    EXISTS (SELECT 1 FROM users WHERE id = (select auth.uid()::text) AND is_super_admin = true)
+);
+
 DROP POLICY IF EXISTS "Admins can manage tasks" ON tasks;
 CREATE POLICY "Admins can manage tasks" ON tasks FOR ALL USING (
+    creator_id = (select auth.uid()::text) OR
     EXISTS (SELECT 1 FROM users WHERE id = (select auth.uid()::text) AND is_super_admin = true) OR
-    EXISTS (SELECT 1 FROM groups WHERE id = group_id AND top_admin_id = (select auth.uid()::text))
+    EXISTS (SELECT 1 FROM groups WHERE id = tasks.group_id AND top_admin_id = (select auth.uid()::text)) OR
+    EXISTS (SELECT 1 FROM group_members WHERE group_id = tasks.group_id AND user_id = (select auth.uid()::text) AND role = 'admin')
 );
 
 -- SUBMISSIONS Policies
@@ -327,12 +411,50 @@ CREATE POLICY "Students can view and manage their submissions" ON submissions FO
     EXISTS (SELECT 1 FROM users WHERE id = (select auth.uid()::text) AND is_super_admin = true)
 );
 
+DROP POLICY IF EXISTS "Admins can view submissions" ON submissions;
+CREATE POLICY "Admins can view submissions" ON submissions FOR SELECT USING (
+    EXISTS (
+        SELECT 1 FROM tasks t
+        JOIN groups g ON g.id = t.group_id
+        WHERE t.id = submissions.task_id AND (
+            g.top_admin_id = (select auth.uid()::text) OR 
+            EXISTS (SELECT 1 FROM group_members gm WHERE gm.group_id = g.id AND gm.user_id = (select auth.uid()::text) AND gm.role = 'admin')
+        )
+    )
+);
+
 -- SCORES Policies
 DROP POLICY IF EXISTS "Users can see their scores" ON scores;
-CREATE POLICY "Users can see their scores" ON scores FOR SELECT USING (true);
+CREATE POLICY "Users can see their scores" ON scores FOR SELECT USING (
+    EXISTS (
+        SELECT 1 FROM submissions s 
+        WHERE s.id = scores.submission_id AND (
+            s.student_id = (select auth.uid()::text) OR
+            EXISTS (
+                SELECT 1 FROM tasks t
+                JOIN groups g ON g.id = t.group_id
+                WHERE t.id = s.task_id AND (
+                    g.top_admin_id = (select auth.uid()::text) OR 
+                    EXISTS (SELECT 1 FROM group_members gm WHERE gm.group_id = g.id AND gm.user_id = (select auth.uid()::text) AND gm.role = 'admin')
+                )
+            )
+        )
+    ) OR
+    EXISTS (SELECT 1 FROM users WHERE id = (select auth.uid()::text) AND is_super_admin = true)
+);
+
 DROP POLICY IF EXISTS "Admins can grade" ON scores;
 CREATE POLICY "Admins can grade" ON scores FOR ALL USING (
-    EXISTS (SELECT 1 FROM users WHERE id = (select auth.uid()::text) AND is_super_admin = true)
+    EXISTS (SELECT 1 FROM users WHERE id = (select auth.uid()::text) AND is_super_admin = true) OR
+    EXISTS (
+        SELECT 1 FROM submissions s
+        JOIN tasks t ON t.id = s.task_id
+        JOIN groups g ON g.id = t.group_id
+        WHERE s.id = scores.submission_id AND (
+            g.top_admin_id = (select auth.uid()::text) OR
+            EXISTS (SELECT 1 FROM group_members gm WHERE gm.group_id = g.id AND gm.user_id = (select auth.uid()::text) AND gm.role = 'admin')
+        )
+    )
 );
 
 -- ============================================
@@ -343,6 +465,31 @@ CREATE POLICY "Admins can grade" ON scores FOR ALL USING (
 ALTER publication supabase_realtime ADD TABLE posts;
 ALTER publication supabase_realtime ADD TABLE likes;
 ALTER publication supabase_realtime ADD TABLE comments;
+ALTER publication supabase_realtime ADD TABLE notifications;
+
+-- ============================================
+-- 7. ADDITIONAL MIGRATIONS (Task Attachments)
+-- ============================================
+
+-- Add attachments column to tasks table
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachments TEXT[] DEFAULT '{}';
+
+-- Create a storage bucket for task attachments if it doesn't exist
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('task-attachments', 'task-attachments', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Policy to allow authenticated users to upload files
+CREATE POLICY "Authenticated users can upload task attachments"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (bucket_id = 'task-attachments');
+
+-- Policy to allow public to view task attachments
+CREATE POLICY "Public can view task attachments"
+ON storage.objects FOR SELECT
+TO public
+USING (bucket_id = 'task-attachments');
 
 -- ============================================
 -- VERIFICATION

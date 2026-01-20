@@ -1,10 +1,9 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { Navbar } from "@/components/navbar";
-import { AdminChatbot } from "@/components/admin-chatbot";
-import { getGlobalRole } from "@/lib/permissions";
+import { getGlobalRole, syncUserToSupabase } from "@/lib/permissions";
 import { redirect } from "next/navigation";
+import { StudentLayoutClient } from "./layout-client";
 
-export default async function DashboardLayout({
+export default async function StudentLayout({
     children,
 }: {
     children: React.ReactNode;
@@ -16,35 +15,30 @@ export default async function DashboardLayout({
         redirect("/sign-in");
     }
 
-    const userEmail = user.emailAddresses[0]?.emailAddress || '';
-
     let role: import("@/lib/permissions").GlobalRole;
     try {
-        role = await getGlobalRole(userId, userEmail);
+        role = await getGlobalRole(userId);
     } catch (error) {
         console.error("Layout Role Check Error (DB might be unreachable):", error);
         role = 'student'; // Fallback
     }
 
-    const showChatbot = role === 'admin' || role === 'top_admin';
+    // Prevent superadmin and admin from accessing student routes
+    if (role === 'super_admin') {
+        redirect('/superadmin');
+    }
+    if (role === 'admin' || role === 'top_admin') {
+        redirect('/admin');
+    }
 
-    return (
-        <div className="min-h-screen bg-slate-50 relative">
-            <Navbar
-                user={{
-                    name: user.firstName && user.lastName
-                        ? `${user.firstName} ${user.lastName}`
-                        : user.emailAddresses[0]?.emailAddress || 'User',
-                    email: user.emailAddresses[0]?.emailAddress || '',
-                    role: role
-                }}
-            />
+    // Sync user data to Supabase
+    const email = user.emailAddresses[0]?.emailAddress;
+    if (email) {
+        await syncUserToSupabase(userId, email, {
+            name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+            imageUrl: user.imageUrl
+        });
+    }
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {children}
-            </main>
-
-            {showChatbot && <AdminChatbot />}
-        </div>
-    );
+    return <StudentLayoutClient role={role}>{children}</StudentLayoutClient>;
 }

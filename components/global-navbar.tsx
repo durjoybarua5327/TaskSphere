@@ -62,7 +62,7 @@ export function GlobalNavbar() {
             }`}>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
                 <Link href="/" onClick={handleLogoClick} className="flex items-center gap-2">
-                    <span className="font-bold text-xl tracking-tight bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent">TaskSphere</span>
+                    <span className="font-bold text-xl tracking-tight bg-gradient-to-r from-green-900 via-green-600 to-green-400 bg-clip-text text-transparent">TaskSphere</span>
                 </Link>
 
                 {/* Desktop Nav */}

@@ -4,22 +4,23 @@ import { PostFeed } from "@/components/post-feed";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
 import { CreatePostModal } from "@/components/posts/CreatePostModal";
+import { Plus as PlusIcon } from "lucide-react";
 
-interface SuperAdminHomeClientProps {
+interface UnifiedHomeFeedProps {
     initialPosts: any[];
     currentUserId: string;
+    isSuperAdmin?: boolean;
 }
 
-export function SuperAdminHomeClient({ initialPosts, currentUserId }: SuperAdminHomeClientProps) {
+export function UnifiedHomeFeed({ initialPosts, currentUserId, isSuperAdmin = false }: UnifiedHomeFeedProps) {
     const router = useRouter();
     const supabase = createClient();
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
     useEffect(() => {
         const channel = supabase
-            .channel('public_posts_changes')
+            .channel('public_posts_changes_unified')
             .on(
                 'postgres_changes',
                 {
@@ -62,24 +63,21 @@ export function SuperAdminHomeClient({ initialPosts, currentUserId }: SuperAdmin
 
     return (
         <div className="space-y-8">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight uppercase">Platform Feed</h1>
-                    <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mt-1">Real-time overview of all community activity</p>
-                </div>
+            <div className="flex items-center justify-end">
                 <button
                     onClick={() => setIsCreateModalOpen(true)}
-                    className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-[#00897B] transition-all duration-300 shadow-xl shadow-slate-200"
+                    className="group flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-green-600 hover:to-emerald-600 text-white rounded-2xl transition-all duration-500 font-bold text-xs uppercase tracking-wider shadow-xl shadow-slate-900/20 hover:shadow-green-500/30 active:scale-95 hover:scale-105 relative overflow-hidden"
                 >
-                    <Plus className="w-4 h-4" />
-                    Create Post
+                    <div className="absolute inset-0 bg-gradient-to-r from-green-400/0 via-green-400/10 to-green-400/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <PlusIcon className="w-4 h-4 relative z-10 transition-transform group-hover:rotate-90 duration-500" />
+                    <span className="relative z-10">Create Post</span>
                 </button>
             </div>
 
             <PostFeed
                 posts={initialPosts}
                 currentUserId={currentUserId}
-                isSuperAdmin={true}
+                isSuperAdmin={isSuperAdmin}
             />
 
             <CreatePostModal

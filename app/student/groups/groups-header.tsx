@@ -1,22 +1,21 @@
-"use client";
+'use client';
 
-import { PlusCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useModal } from "@/components/providers/modal-provider";
-import { GroupForm, GroupFormData } from "@/components/groups/GroupForm";
-import { createGroup } from "./actions";
-import { useRouter } from "next/navigation";
+import { Plus } from 'lucide-react';
+import { useModal } from '@/components/providers/modal-provider';
+import { GroupForm, GroupFormData } from '@/components/groups/GroupForm';
+import { createGroup } from './actions';
+import { useRouter } from 'next/navigation';
 
-export function GroupsHeader() {
+export function GroupsHeader({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     const { openModal, closeModal } = useModal();
     const router = useRouter();
 
     const handleCreateGroup = () => {
         openModal({
-            type: "create",
-            title: "Create New Group",
-            description: "Fill in the details to create a new collaboration group",
-            className: "max-w-2xl",
+            type: 'create',
+            title: 'Create New Group',
+            description: 'Fill in the details to create a new collaboration group',
+            className: 'max-w-2xl',
             preventOutsideClick: true,
             content: (
                 <GroupForm
@@ -35,24 +34,17 @@ export function GroupsHeader() {
     };
 
     return (
-        <div className="bg-gradient-to-r from-indigo-500/10 to-purple-600/10 border border-indigo-200 rounded-3xl p-8 mb-8">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-4xl font-bold text-slate-900 mb-2">
-                        Groups
-                    </h1>
-                    <p className="text-slate-600 text-lg font-medium">
-                        Join groups to collaborate and learn together
-                    </p>
-                </div>
-                <Button
+        <div className="flex items-center justify-end mb-8">
+            {isSuperAdmin && (
+                <button
                     onClick={handleCreateGroup}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-6 rounded-2xl shadow-lg shadow-indigo-100 flex items-center gap-2 group transition-all"
+                    className="group flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-slate-900 to-slate-800 hover:from-green-600 hover:to-emerald-600 text-white rounded-2xl transition-all duration-500 font-bold text-xs uppercase tracking-wider shadow-xl shadow-slate-900/20 hover:shadow-green-500/30 active:scale-95 hover:scale-105 relative overflow-hidden"
                 >
-                    <PlusCircle className="w-5 h-5 group-hover:rotate-90 transition-transform" />
-                    <span className="font-semibold text-lg">Create Group</span>
-                </Button>
-            </div>
+                    <div className="absolute inset-0 bg-gradient-to-r from-green-400/0 via-green-400/10 to-green-400/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    <Plus className="w-4 h-4 relative z-10 transition-transform group-hover:rotate-90 duration-500" />
+                    <span className="relative z-10">Create Group</span>
+                </button>
+            )}
         </div>
     );
 }

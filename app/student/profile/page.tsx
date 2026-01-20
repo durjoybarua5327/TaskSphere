@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase-server";
 import { currentUser } from "@clerk/nextjs/server";
-import { PostFeed } from "@/components/posts/PostFeed";
+import { PostFeed } from "@/components/post-feed";
 import { User, Mail, GraduationCap, Building2, Calendar, Shield } from "lucide-react";
 
 async function getData() {

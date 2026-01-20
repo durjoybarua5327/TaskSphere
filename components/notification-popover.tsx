@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Bell, User, Heart, MessageCircle } from "lucide-react";
+import { Bell, User, Heart, MessageCircle, CheckCheck } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
-import { getNotifications, markNotificationAsRead } from "@/app/student/actions";
+import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from "@/app/student/actions";
 import { useRouter } from "next/navigation";
 
 // Define Notification Type
@@ -49,15 +49,16 @@ export function NotificationPopover() {
 
     // Handle click outside
     useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
+        const handleClickOutside = (event: MouseEvent) => {
             if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
                 setIsOpen(false);
             }
-        }
+        };
 
         if (isOpen) {
             document.addEventListener("mousedown", handleClickOutside);
         }
+
         return () => {
             document.removeEventListener("mousedown", handleClickOutside);
         };
@@ -75,6 +76,12 @@ export function NotificationPopover() {
         }
 
         setIsOpen(false);
+    };
+
+    const handleMarkAllAsRead = async () => {
+        await markAllNotificationsAsRead();
+        setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+        setUnreadCount(0);
     };
 
     return (
@@ -99,11 +106,23 @@ export function NotificationPopover() {
                     >
                         <div className="p-4 border-b border-slate-50 flex items-center justify-between bg-slate-50/50 shrink-0">
                             <h3 className="font-black text-slate-900 text-sm uppercase tracking-widest">Notifications</h3>
-                            {unreadCount > 0 && (
-                                <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-100">
-                                    {unreadCount} New
-                                </span>
-                            )}
+                            <div className="flex items-center gap-2">
+                                {unreadCount > 0 && (
+                                    <>
+                                        <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded-lg text-[10px] font-black uppercase tracking-widest border border-red-100">
+                                            {unreadCount} New
+                                        </span>
+                                        <button
+                                            onClick={handleMarkAllAsRead}
+                                            className="flex items-center gap-1 px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg text-[10px] font-bold uppercase tracking-wide border border-green-200 transition-colors"
+                                            title="Mark all as read"
+                                        >
+                                            <CheckCheck className="w-3 h-3" />
+                                            <span>Mark all</span>
+                                        </button>
+                                    </>
+                                )}
+                            </div>
                         </div>
 
                         <div className="flex-1 overflow-y-auto custom-scrollbar [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-200 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-300">

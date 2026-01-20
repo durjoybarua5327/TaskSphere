@@ -194,6 +194,21 @@ export async function markNotificationAsRead(notificationId: string) {
     return { success: true };
 }
 
+export async function markAllNotificationsAsRead() {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated" };
+
+    const supabase = createAdminClient();
+    await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("user_id", userId)
+        .eq("is_read", false);
+
+    revalidatePath("/superadmin");
+    return { success: true };
+}
+
 export async function likePost(postId: string, userId: string) {
     const { userId: authUserId } = await auth();
 

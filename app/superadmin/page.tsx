@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { isSuperAdmin } from "@/lib/permissions";
 import { getDashboardStats } from "./actions";
-import { SuperAdminHomeClient } from "./client-home";
+import { UnifiedHomeFeed } from "@/components/unified-home-feed";
 import { Users, FileText, MessageSquare, Plus, ArrowUpRight, Target, Activity } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase-admin";
 
@@ -17,7 +17,8 @@ async function getPosts(userId: string) {
                 id,
                 full_name,
                 email,
-                avatar_url
+                avatar_url,
+                is_super_admin
             ),
             likes:likes(user_id),
             comments:comments(count)
@@ -48,9 +49,10 @@ export default async function SuperAdminPage() {
 
     return (
         <div className="max-w-[1400px] mx-auto">
-            <SuperAdminHomeClient
+            <UnifiedHomeFeed
                 initialPosts={posts}
                 currentUserId={userId}
+                isSuperAdmin={true}
             />
         </div>
     );

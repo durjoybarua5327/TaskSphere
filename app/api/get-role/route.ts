@@ -12,11 +12,17 @@ export async function GET() {
         const user = await currentUser();
         const email = user?.emailAddresses[0]?.emailAddress;
 
-        // Pass info to getGlobalRole so it can sync the user to Supabase
-        const role = await getGlobalRole(userId, email, {
-            name: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || undefined,
-            imageUrl: user?.imageUrl
-        });
+        // Pass info to syncUserToSupabase so it can sync the user to Supabase
+        if (email) {
+            const { syncUserToSupabase } = await import("@/lib/permissions");
+            // Fire and forget sync to avoid blocking the response
+            syncUserToSupabase(userId, email, {
+                name: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || undefined,
+                imageUrl: user?.imageUrl
+            }).catch(e => console.error("Background sync failed", e));
+        }
+
+        const role = await getGlobalRole(userId);
         return NextResponse.json({ role });
     } catch (error) {
         console.error("Error in get-role API:", error);

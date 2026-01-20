@@ -76,9 +76,10 @@ interface GroupRequest {
 interface GroupsClientProps {
     initialGroups: Group[];
     initialRequests: GroupRequest[];
+    myGroupIds?: string[];
 }
 
-export function GroupsClient({ initialGroups, initialRequests }: GroupsClientProps) {
+export function GroupsClient({ initialGroups, initialRequests, myGroupIds = [] }: GroupsClientProps) {
     const { openModal, closeModal } = useModal();
     const router = useRouter();
     const [groups, setGroups] = useState<Group[]>(initialGroups);
@@ -87,6 +88,7 @@ export function GroupsClient({ initialGroups, initialRequests }: GroupsClientPro
     const [selectedGroupForMembers, setSelectedGroupForMembers] = useState<Group | null>(null);
     const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
     const [isFetchingMembers, setIsFetchingMembers] = useState(false);
+    const [viewMode, setViewMode] = useState<"all" | "my">("all"); // Default to "All Groups" for Super Admin
 
     useEffect(() => {
         setGroups(initialGroups);
@@ -96,10 +98,14 @@ export function GroupsClient({ initialGroups, initialRequests }: GroupsClientPro
         setRequests(initialRequests);
     }, [initialRequests]);
 
-    const filteredGroups = groups.filter(g =>
-        g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        g.institute_name?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredGroups = groups.filter(g => {
+        const matchesSearch = g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            g.institute_name?.toLowerCase().includes(searchQuery.toLowerCase());
+
+        const matchesView = viewMode === "all" || (myGroupIds.includes(g.id));
+
+        return matchesSearch && matchesView;
+    });
 
     const handleCreateGroup = () => {
         openModal({
@@ -254,8 +260,8 @@ export function GroupsClient({ initialGroups, initialRequests }: GroupsClientPro
             {/* Header Section */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-1 uppercase">Groups Ecosystem</h1>
-                    <p className="text-slate-500 font-bold text-xs uppercase tracking-[0.1em]">Orchestrate and monitor all communities within the platform.</p>
+                    <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-4 uppercase">Groups Ecosystem</h1>
+
                 </div>
 
                 <div className="flex items-center gap-4">

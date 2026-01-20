@@ -132,7 +132,7 @@ export function CreatePostModal({ isOpen, onClose, editData }: CreatePostModalPr
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
                         placeholder="Title of your post"
-                        className="text-xl font-bold border-none focus:ring-0 px-0 placeholder:text-slate-400 w-full"
+                        className="text-xl font-bold border-none outline-none focus:outline-none px-0 placeholder:text-slate-400 w-full bg-transparent"
                     />
 
                     <div className="flex-1 min-h-0">

@@ -158,10 +158,8 @@ export async function deleteGroup(groupId: string) {
 
     const supabase = createAdminClient();
 
-    // Delete members first
-    await supabase.from("group_members").delete().eq("group_id", groupId);
-
-    // Delete group
+    // CASCADE delete will automatically remove group_members
+    // This effectively "demotes" any admins of this group to student status (unless they admin other groups)
     const { error } = await supabase
         .from("groups")
         .delete()
@@ -170,6 +168,9 @@ export async function deleteGroup(groupId: string) {
     if (error) return { error: error.message };
 
     revalidatePath("/superadmin/groups");
+    revalidatePath("/superadmin/admins"); // Refresh admin list
+    revalidatePath("/admin"); // Refresh admin panel access
+    revalidatePath("/", "layout"); // Refresh global navigation/access
     return { success: true };
 }
 
@@ -191,6 +192,19 @@ export async function getGroups() {
 
     if (error) return { error: error.message, groups: [] };
     return { groups: data || [] };
+}
+
+export async function getUserGroupIds() {
+    const { userId } = await auth();
+    if (!userId) return [];
+
+    const supabase = createAdminClient();
+    const { data } = await supabase
+        .from("group_members")
+        .select("group_id")
+        .eq("user_id", userId);
+
+    return data?.map(m => m.group_id) || [];
 }
 
 export async function getGroupMembers(groupId: string) {

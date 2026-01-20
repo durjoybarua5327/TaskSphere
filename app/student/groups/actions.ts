@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { createClient } from "@/lib/supabase-server";
+import { createAdminClient } from "@/lib/supabase-admin";
 import { revalidatePath } from "next/cache";
 
 export async function createGroup(data: {
@@ -17,7 +18,18 @@ export async function createGroup(data: {
         return { error: "Not authenticated", success: false };
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient();
+
+    // Verify Super Admin
+    const { data: user } = await supabase
+        .from("users")
+        .select("is_super_admin")
+        .eq("id", userId)
+        .single();
+
+    if (!user?.is_super_admin) {
+        return { error: "Unauthorized: Only Super Admins can create groups.", success: false };
+    }
 
     // Create the group
     const { data: newGroup, error: groupError } = await supabase

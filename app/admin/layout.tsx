@@ -1,40 +1,42 @@
-"use client";
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { getGlobalRole, syncUserToSupabase } from "@/lib/permissions";
+import { redirect } from "next/navigation";
+import { AdminLayoutClient } from "./layout-client";
 
-import Link from "next/link";
-import { ShieldAlert } from "lucide-react";
-import { ProfileDropdown } from "@/components/profile-dropdown";
-
-export default function AdminLayout({
+export default async function AdminLayout({
     children,
 }: {
     children: React.ReactNode;
 }) {
-    return (
-        <div className="min-h-screen bg-slate-50">
-            {/* Top Navbar */}
-            <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16">
+    const { userId } = await auth();
+    const user = await currentUser();
 
+    if (!userId || !user) {
+        redirect("/sign-in");
+    }
 
+    let role: import("@/lib/permissions").GlobalRole;
+    try {
+        role = await getGlobalRole(userId);
+    } catch (error) {
+        console.error("Layout Role Check Error:", error);
+        role = 'student';
+    }
 
-                        {/* Logo/Brand */}
-                        <Link href="/admin" className="flex items-center gap-2">
-                            <span className="font-bold text-xl tracking-tight bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 bg-clip-text text-transparent">
-                                TaskSphere
-                            </span>
-                        </Link>
+    // STRICT: Only admin and top_admin can access this route
+    if (role !== 'admin' && role !== 'top_admin') {
+        if (role === 'super_admin') redirect('/superadmin');
+        redirect('/student');
+    }
 
-                        {/* User Menu */}
-                        <ProfileDropdown role="Admin" />
-                    </div>
-                </div>
-            </nav>
+    // Sync user data to Supabase
+    const email = user.emailAddresses[0]?.emailAddress;
+    if (email) {
+        await syncUserToSupabase(userId, email, {
+            name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+            imageUrl: user.imageUrl
+        });
+    }
 
-            {/* Main Content */}
-            <main>
-                {children}
-            </main>
-        </div>
-    );
+    return <AdminLayoutClient>{children}</AdminLayoutClient>;
 }

@@ -74,9 +74,9 @@ export function RequestCard({ request }: { request: Request }) {
                     <div className="flex items-center gap-2">
                         {getStatusIcon()}
                         <span className={`text-sm font-semibold ${request.status === "pending" ? "text-amber-700" :
-                                request.status === "approved" ? "text-emerald-700" :
-                                    request.status === "rejected" ? "text-red-700" :
-                                        "text-slate-700"
+                            request.status === "approved" ? "text-emerald-700" :
+                                request.status === "rejected" ? "text-red-700" :
+                                    "text-slate-700"
                             }`}>
                             {getStatusText()}
                         </span>
@@ -92,8 +92,8 @@ export function RequestCard({ request }: { request: Request }) {
 
             {request.admin_response && (
                 <div className={`mt-4 p-4 rounded-xl ${request.status === "approved" ? "bg-emerald-100/50 border border-emerald-200" :
-                        request.status === "rejected" ? "bg-red-100/50 border border-red-200" :
-                            "bg-slate-100 border border-slate-200"
+                    request.status === "rejected" ? "bg-red-100/50 border border-red-200" :
+                        "bg-slate-100 border border-slate-200"
                     }`}>
                     <p className="text-sm font-semibold text-slate-900 mb-1">Admin Response:</p>
                     <p className="text-sm text-slate-700">{request.admin_response}</p>
@@ -108,7 +108,7 @@ export function RequestCard({ request }: { request: Request }) {
             {request.status === "approved" && request.created_group_id && (
                 <div className="mt-4">
                     <a
-                        href={`/dashboard/groups`}
+                        href={`/student/groups`}
                         className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors text-sm font-medium"
                     >
                         View Your Group →

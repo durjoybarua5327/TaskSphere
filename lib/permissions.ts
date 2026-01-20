@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase-server'
 import { createAdminClient } from '@/lib/supabase-admin'
+import { cache } from 'react'
 
 export type GroupRole = 'student' | 'admin' | 'top_admin'
 export type GlobalRole = 'super_admin' | 'top_admin' | 'admin' | 'student'
@@ -7,7 +8,7 @@ export type GlobalRole = 'super_admin' | 'top_admin' | 'admin' | 'student'
 
 // Check if user is super admin
 // Note: Removed caching due to Next.js constraints with cookies()
-export async function isSuperAdmin(userId: string): Promise<boolean> {
+export const isSuperAdmin = cache(async (userId: string): Promise<boolean> => {
     try {
         const supabase = createAdminClient()
         const { data } = await supabase.from('users').select('is_super_admin').eq('id', userId).single()
@@ -16,7 +17,7 @@ export async function isSuperAdmin(userId: string): Promise<boolean> {
         console.error("isSuperAdmin check failed:", error);
         return false;
     }
-}
+});
 
 export async function getGroupRole(userId: string, groupId: string): Promise<GroupRole | null> {
     const supabase = await createClient()
@@ -56,7 +57,7 @@ export async function hasGroupPermission(userId: string, groupId: string, requir
 }
 
 
-export async function getGlobalRole(userId: string, userEmail?: string, userData?: { name?: string, imageUrl?: string }): Promise<GlobalRole> {
+export const getGlobalRole = cache(async (userId: string): Promise<GlobalRole> => {
     // Use admin client to bypass RLS for checking/creating users
     let supabase;
     try {
@@ -64,25 +65,6 @@ export async function getGlobalRole(userId: string, userEmail?: string, userData
     } catch (e) {
         console.warn("Service role key missing, falling back to anon client:", e);
         supabase = await createClient();
-    }
-
-    // Sync user to database if information is available
-    if (userEmail) {
-        // We use upsert without ignoreDuplicates to ensure we update profile info
-        // and trigger the database role assignment logic.
-        const { error } = await supabase
-            .from('users')
-            .upsert({
-                id: userId,
-                email: userEmail,
-                full_name: userData?.name || null,
-                avatar_url: userData?.imageUrl || null,
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'id' });
-
-        if (error) {
-            console.warn("Syncing user to Supabase error:", error.message);
-        }
     }
 
     // Now fetch user role and memberships
@@ -98,10 +80,10 @@ export async function getGlobalRole(userId: string, userEmail?: string, userData
             .eq('user_id', userId)
     ]);
 
-    const isSuperAdmin = userResult.data?.is_super_admin ?? false;
+    const isSuperAdminValue = userResult.data?.is_super_admin ?? false;
     const memberships = membershipsResult.data || [];
 
-    if (isSuperAdmin) return 'super_admin';
+    if (isSuperAdminValue) return 'super_admin';
 
     // Check roles from the already fetched memberships
     const isTopAdmin = memberships.some(m => m.role === 'top_admin');
@@ -111,4 +93,22 @@ export async function getGlobalRole(userId: string, userEmail?: string, userData
     if (isAdmin) return 'admin';
 
     return 'student';
+});
+
+export async function syncUserToSupabase(userId: string, userEmail: string, userData?: { name?: string, imageUrl?: string }) {
+    const supabase = createAdminClient();
+
+    const { error } = await supabase
+        .from('users')
+        .upsert({
+            id: userId,
+            email: userEmail,
+            full_name: userData?.name || null,
+            avatar_url: userData?.imageUrl || null,
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+
+    if (error) {
+        console.warn("Syncing user to Supabase error:", error.message);
+    }
 }

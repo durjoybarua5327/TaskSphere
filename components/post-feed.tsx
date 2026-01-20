@@ -45,6 +45,7 @@ type Post = {
         full_name: string | null;
         email: string;
         avatar_url: string | null;
+        is_super_admin?: boolean;
     } | null;
     likes: { user_id: string }[];
     comments: { count: number }[];
@@ -138,20 +139,50 @@ export function PostFeed({ posts, currentUserId, isSuperAdmin = false }: { posts
 function PostCard({ post, currentUserId, isSuperAdmin, onClick }: { post: Post; currentUserId: string; isSuperAdmin: boolean; onClick: () => void }) {
     const [isLiked, setIsLiked] = useState(post.likes?.some(l => l.user_id === currentUserId) || false);
     const [likesCount, setLikesCount] = useState(post.likes?.length || 0);
+    const [commentsCount, setCommentsCount] = useState(post.comments?.[0]?.count || 0);
     const [isLiking, setIsLiking] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const { openModal } = useModal();
     const router = useRouter();
+    const supabase = createClient();
 
     const author = post.users;
     const authorName = author?.full_name || author?.email?.split('@')[0] || 'Unknown User';
-    const commentsCount = post.comments?.[0]?.count || 0;
     const canEdit = post.author_id === currentUserId || isSuperAdmin;
 
     useEffect(() => {
         setIsLiked(post.likes?.some(l => l.user_id === currentUserId) || false);
         setLikesCount(post.likes?.length || 0);
-    }, [post.likes, currentUserId]);
+        setCommentsCount(post.comments?.[0]?.count || 0);
+    }, [post.likes, post.comments, currentUserId]);
+
+    // Realtime subscription for comments count
+    useEffect(() => {
+        const channel = supabase
+            .channel(`post_card_${post.id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'comments',
+                    filter: `post_id=eq.${post.id}`
+                },
+                async (payload) => {
+                    // Fetch updated count
+                    const { count } = await supabase
+                        .from('comments')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('post_id', post.id);
+                    setCommentsCount(count || 0);
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [post.id, supabase]);
 
     const handleLike = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -196,42 +227,52 @@ function PostCard({ post, currentUserId, isSuperAdmin, onClick }: { post: Post; 
         <>
             <motion.div
                 onClick={onClick}
-                whileHover={{ y: -4, transition: { duration: 0.3 } }}
-                className="group bg-white border border-slate-200 rounded-[1.5rem] p-4 hover:shadow-xl transition-all duration-500 cursor-pointer flex flex-col relative h-[450px] overflow-hidden"
+                whileHover={{ y: -6, transition: { duration: 0.4 } }}
+                className="group bg-white border border-slate-200 rounded-3xl p-6 hover:shadow-2xl hover:shadow-slate-200/50 hover:border-green-100 transition-all duration-500 cursor-pointer flex flex-col relative h-[450px] overflow-hidden"
             >
+                {/* Decorative gradient on hover */}
+                <div className="absolute inset-0 bg-gradient-to-br from-green-50/0 via-emerald-50/0 to-green-50/0 group-hover:from-green-50/30 group-hover:via-emerald-50/20 group-hover:to-green-50/30 opacity-0 group-hover:opacity-100 transition-all duration-700 pointer-events-none rounded-3xl"></div>
+
                 {/* Admin/Owner Actions */}
                 {canEdit && (
-                    <div className="absolute top-3 right-3 z-20 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                    <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 ease-out">
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setIsEditModalOpen(true);
                             }}
-                            className="p-1.5 bg-white/80 backdrop-blur-md shadow-lg border border-slate-100 text-slate-500 hover:text-[#00897B] rounded-lg transition-all"
+                            className="p-2.5 bg-white/95 backdrop-blur-xl shadow-xl border border-slate-100 text-slate-600 hover:text-green-600 hover:bg-green-50 rounded-2xl transition-all duration-300 hover:scale-110 active:scale-95"
                         >
-                            <Pencil className="w-3 h-3" />
+                            <Pencil className="w-4 h-4" />
                         </button>
                         <button
                             onClick={handleDelete}
-                            className="p-1.5 bg-white/80 backdrop-blur-md shadow-lg border border-slate-100 text-slate-500 hover:text-red-600 rounded-lg transition-all"
+                            className="p-2.5 bg-white/95 backdrop-blur-xl shadow-xl border border-slate-100 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-2xl transition-all duration-300 hover:scale-110 active:scale-95"
                         >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="w-4 h-4" />
                         </button>
                     </div>
                 )}
 
+
                 {/* Author Info */}
-                <div className="flex items-center gap-2.5 mb-4 shrink-0">
-                    <div className="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center border border-slate-100 shadow-inner">
+                <div className="flex items-center gap-3 mb-5 shrink-0 relative z-10">
+                    <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center border border-slate-200 shadow-sm">
                         {author?.avatar_url ? (
-                            <img src={author.avatar_url} alt={authorName} className="w-full h-full rounded-lg object-cover" />
+                            <img src={author.avatar_url} alt={authorName} className="w-full h-full rounded-2xl object-cover" />
                         ) : (
-                            <User className="w-3.5 h-3.5 text-slate-400" />
+                            <User className="w-4 h-4 text-slate-400" />
                         )}
                     </div>
-                    <div>
-                        <p className="text-[10px] font-black text-slate-900 leading-none mb-0.5 uppercase tracking-tight">{authorName}</p>
-                        <p className="text-[8px] font-bold text-slate-400 flex items-center gap-1 uppercase tracking-widest">
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                            <p className="text-sm font-bold text-slate-900 leading-none">{authorName}</p>
+                            {/* Role Badge - Show exact role */}
+                            <span className="px-1.5 py-0.5 bg-green-50 border border-green-100 rounded-md text-[10px] font-bold text-green-700">
+                                {author?.is_super_admin ? 'Super Admin' : 'Student'}
+                            </span>
+                        </div>
+                        <p className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
                             <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
                             {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
                         </p>
@@ -239,28 +280,28 @@ function PostCard({ post, currentUserId, isSuperAdmin, onClick }: { post: Post; 
                 </div>
 
                 {/* Post Content Preview Area - Fixed height flex container */}
-                <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 flex flex-col overflow-hidden relative z-10">
                     {post.title && (
-                        <h3 className="text-[13px] font-black text-slate-900 mb-1.5 leading-tight group-hover:text-[#00897B] transition-colors line-clamp-1">
+                        <h3 className="text-lg font-black text-slate-900 mb-3 leading-snug group-hover:text-green-700 transition-colors line-clamp-2 shrink-0">
                             {post.title}
                         </h3>
                     )}
 
                     <div
-                        className={`text-[10px] text-slate-500 leading-relaxed font-medium mb-3 overflow-hidden ${hasImages ? 'line-clamp-4' : 'line-clamp-[16]'
+                        className={`text-sm text-slate-600 leading-relaxed font-normal mb-4 overflow-hidden ${hasImages ? 'line-clamp-4' : 'line-clamp-[16]'
                             }`}
                         dangerouslySetInnerHTML={{ __html: post.content }}
                     />
 
                     {hasImages && (
-                        <div className="relative aspect-video rounded-xl overflow-hidden mt-auto mb-3 border border-slate-50 shadow-sm shrink-0">
+                        <div className="relative aspect-video rounded-2xl overflow-hidden mt-auto mb-4 border border-slate-100 shadow-md shrink-0 group-hover:shadow-xl transition-shadow duration-500">
                             <img
                                 src={post.images[0]}
                                 alt="Media"
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                             />
                             {post.images.length > 1 && (
-                                <div className="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-md text-white px-1.5 py-0.5 rounded-md text-[7px] font-black uppercase tracking-widest">
+                                <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md text-white px-2.5 py-1 rounded-xl text-xs font-bold">
                                     +{post.images.length - 1}
                                 </div>
                             )}
@@ -269,9 +310,9 @@ function PostCard({ post, currentUserId, isSuperAdmin, onClick }: { post: Post; 
 
                     <div className="mt-auto">
                         {post.tags && post.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mb-2">
+                            <div className="flex flex-wrap gap-1.5 mb-3">
                                 {post.tags.slice(0, 2).map((tag, idx) => (
-                                    <span key={idx} className="px-1.5 py-0.5 bg-slate-50 text-slate-400 rounded-md text-[7px] font-black uppercase tracking-wider border border-slate-100">
+                                    <span key={idx} className="px-2.5 py-1 bg-green-50 text-green-700 rounded-xl text-xs font-bold border border-green-100">
                                         #{tag}
                                     </span>
                                 ))}
@@ -279,22 +320,22 @@ function PostCard({ post, currentUserId, isSuperAdmin, onClick }: { post: Post; 
                         )}
 
                         {/* Actions Panel */}
-                        <div className="flex items-center gap-3 pt-3 border-t border-slate-50">
+                        <div className="flex items-center gap-4 pt-3 border-t border-slate-100">
                             <button
                                 onClick={handleLike}
                                 disabled={isLiking}
-                                className={`flex items-center gap-1 transition-all duration-300 ${isLiked
-                                    ? "text-red-600 font-black"
-                                    : "text-slate-400 hover:text-slate-600"
+                                className={`flex items-center gap-1.5 transition-all duration-300 ${isLiked
+                                    ? "text-red-600 font-bold scale-105"
+                                    : "text-slate-400 hover:text-slate-700"
                                     }`}
                             >
-                                <Heart className={`w-3 h-3 ${isLiked ? "fill-current" : ""}`} />
-                                <span className="text-[9px] tracking-tight">{likesCount}</span>
+                                <Heart className={`w-4 h-4 ${isLiked ? "fill-current" : ""} transition-all`} />
+                                <span className="text-sm font-semibold">{likesCount}</span>
                             </button>
 
-                            <div className="flex items-center gap-1 text-slate-400">
-                                <MessageCircle className="w-3 h-3" />
-                                <span className="text-[9px] tracking-tight">{commentsCount}</span>
+                            <div className="flex items-center gap-1.5 text-slate-400">
+                                <MessageCircle className="w-4 h-4" />
+                                <span className="text-sm font-semibold">{commentsCount}</span>
                             </div>
                         </div>
                     </div>
@@ -452,20 +493,26 @@ function PostModal({ post, currentUserId, isSuperAdmin, onClose }: { post: Post;
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-10">
-                    <div className="space-y-8">
-                        {/* Header */}
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center border border-slate-100">
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-8">
+                    <div className="space-y-6">
+                        {/* Header with Role */}
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100">
                                 {author?.avatar_url ? (
-                                    <img src={author.avatar_url} alt={authorName} className="w-full h-full rounded-2xl object-cover" />
+                                    <img src={author.avatar_url} alt={authorName} className="w-full h-full rounded-xl object-cover" />
                                 ) : (
-                                    <User className="w-6 h-6 text-slate-300" />
+                                    <User className="w-5 h-5 text-slate-300" />
                                 )}
                             </div>
-                            <div>
-                                <h4 className="text-xl font-black text-slate-900 leading-none mb-1 uppercase tracking-tight">{authorName}</h4>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                            <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <h4 className="text-base font-bold text-slate-900 leading-none">{authorName}</h4>
+                                    {/* Role Badge beside name - Show exact role */}
+                                    <span className="px-2 py-0.5 bg-green-50 border border-green-100 rounded-lg text-xs font-bold text-green-700">
+                                        {author?.is_super_admin ? 'Super Admin' : 'Student'}
+                                    </span>
+                                </div>
+                                <p className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
                                     <span className="w-1 h-1 rounded-full bg-slate-300"></span>
                                     {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
                                 </p>
@@ -473,21 +520,21 @@ function PostModal({ post, currentUserId, isSuperAdmin, onClose }: { post: Post;
                         </div>
 
                         {/* Title & Content */}
-                        <div className="space-y-4">
+                        <div className="space-y-3">
                             {post.title && (
-                                <h2 className="text-2xl font-black text-slate-900 leading-tight tracking-tight uppercase">
+                                <h2 className="text-lg font-bold text-slate-900 leading-tight">
                                     {post.title}
                                 </h2>
                             )}
                             <div
-                                className="text-base text-slate-600 prose prose-slate max-w-none leading-relaxed"
+                                className="text-sm text-slate-600 prose prose-slate max-w-none leading-relaxed"
                                 dangerouslySetInnerHTML={{ __html: post.content }}
                             />
                         </div>
 
-                        {/* Images Carousel */}
+                        {/* Images Carousel - Smaller */}
                         {post.images && post.images.length > 0 && (
-                            <div className="relative group/carousel rounded-[2.5rem] overflow-hidden bg-slate-50 border border-slate-100 shadow-sm aspect-[4/3] flex items-center justify-center">
+                            <div className="relative group/carousel rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 shadow-sm aspect-video flex items-center justify-center">
                                 <AnimatePresence mode="wait">
                                     <motion.img
                                         key={currentImageIndex}
@@ -641,7 +688,9 @@ function CommentItem({
     const [isSaving, setIsSaving] = useState(false);
     const { openModal } = useModal();
 
-    const canEdit = comment.user_id === currentUserId || isSuperAdmin;
+    // Users can only edit their own comments (superadmins can edit all)
+    const canEdit = comment.user_id === currentUserId;
+    const canDelete = comment.user_id === currentUserId || isSuperAdmin;
 
     const handleUpdate = async () => {
         if (!editContent.trim() || isSaving) return;
@@ -727,9 +776,34 @@ function CommentItem({
                         </div>
                     </div>
                 ) : (
-                    <p className="text-sm text-slate-600 leading-relaxed font-medium">
-                        {comment.content}
-                    </p>
+                    <>
+                        <p className="text-sm text-slate-600 leading-relaxed font-medium">
+                            {comment.content}
+                        </p>
+
+                        {(canEdit || canDelete) && (
+                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {canEdit && (
+                                    <button
+                                        onClick={() => setIsEditing(true)}
+                                        className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-green-600 transition-colors"
+                                        title="Edit comment"
+                                    >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                                {canDelete && (
+                                    <button
+                                        onClick={handleDelete}
+                                        className="p-1 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-600 transition-colors"
+                                        title="Delete comment"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         </div>
