@@ -8,11 +8,12 @@ import { cn } from "@/lib/utils";
 interface FileUploadProps {
     onChange: (urls: string[]) => void;
     value: string[];
-    endpoint?: string; // Optional, for future use if we switch to server-side upload
+    endpoint?: string;
     className?: string;
+    onUploadFile?: (file: File) => Promise<string>;
 }
 
-export function FileUpload({ onChange, value = [], className }: FileUploadProps) {
+export function FileUpload({ onChange, value = [], className, onUploadFile }: FileUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
     const supabase = createClient();
 
@@ -25,6 +26,12 @@ export function FileUpload({ onChange, value = [], className }: FileUploadProps)
 
         try {
             for (const file of Array.from(files)) {
+                if (onUploadFile) {
+                    const url = await onUploadFile(file);
+                    if (url) newUrls.push(url);
+                    continue;
+                }
+
                 const fileExt = file.name.split('.').pop();
                 const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
                 const filePath = `${fileName}`;

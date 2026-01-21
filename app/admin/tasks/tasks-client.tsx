@@ -15,10 +15,13 @@ import {
     Building2,
     GraduationCap,
     ArrowRight,
-    LayoutDashboard
+    LayoutDashboard,
+    Plus
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { CreateTaskModal } from "../groups/[groupId]/_components/create-task-modal";
+import { createTask } from "../actions";
 
 interface Task {
     id: string;
@@ -69,7 +72,31 @@ interface TasksClientProps {
 export function TasksClient({ initialTasks, initialSubmissions, initialGroups }: TasksClientProps) {
     const [activeTab, setActiveTab] = useState<'groups' | 'tasks' | 'submissions'>('tasks');
     const [searchQuery, setSearchQuery] = useState("");
+    const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+    const [isCreatingTask, setIsCreatingTask] = useState(false);
     const router = useRouter();
+
+    const handleCreateTask = async (data: any) => {
+        if (!data.groupId) {
+            alert("Please select a group");
+            return;
+        }
+        setIsCreatingTask(true);
+        const result = await createTask(data.groupId, {
+            title: data.title,
+            description: data.description,
+            deadline: data.deadline,
+            max_score: data.maxScore,
+            attachments: data.attachments
+        });
+        setIsCreatingTask(false);
+        if (result.success) {
+            setIsTaskModalOpen(false);
+            router.refresh();
+        } else {
+            alert(result.error);
+        }
+    };
 
     const filteredTasks = initialTasks.filter(t =>
         t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -109,6 +136,14 @@ export function TasksClient({ initialTasks, initialSubmissions, initialGroups }:
                         className="bg-transparent border-none outline-none text-xs font-bold text-slate-700 w-full placeholder:text-slate-300 uppercase tracking-wide"
                     />
                 </div>
+
+                <button
+                    onClick={() => setIsTaskModalOpen(true)}
+                    className="group px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-emerald-600 transition-all active:scale-95 flex items-center gap-2 whitespace-nowrap shadow-lg shadow-slate-200"
+                >
+                    <Plus className="w-4 h-4 transition-transform duration-500 group-hover:rotate-180" />
+                    Create Task
+                </button>
             </div>
 
             {/* Navigation Tabs */}
@@ -242,7 +277,7 @@ export function TasksClient({ initialTasks, initialSubmissions, initialGroups }:
                                         </div>
 
                                         <Link
-                                            href={`/admin/groups/${task.group_id}`}
+                                            href={`/admin/groups/${task.group_id}/tasks/${task.id}`}
                                             className="px-6 py-3 bg-slate-50 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-50 hover:text-emerald-600 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
                                         >
                                             View Details
@@ -351,6 +386,14 @@ export function TasksClient({ initialTasks, initialSubmissions, initialGroups }:
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            <CreateTaskModal
+                isOpen={isTaskModalOpen}
+                onClose={() => setIsTaskModalOpen(false)}
+                onSubmit={handleCreateTask}
+                isSubmitting={isCreatingTask}
+                groups={initialGroups}
+            />
         </div>
     );
 }

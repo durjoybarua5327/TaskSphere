@@ -38,5 +38,5 @@ export default async function AdminLayout({
         });
     }
 
-    return <AdminLayoutClient>{children}</AdminLayoutClient>;
+    return <AdminLayoutClient userId={userId}>{children}</AdminLayoutClient>;
 }

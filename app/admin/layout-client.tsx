@@ -2,14 +2,45 @@
 
 import { UnifiedNavbar } from "@/components/unified-navbar";
 import { motion } from "framer-motion";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { createClient } from "@/lib/supabase";
 
 type AdminLayoutClientProps = {
     children: React.ReactNode;
+    userId: string;
 };
 
-export function AdminLayoutClient({ children }: AdminLayoutClientProps) {
+export function AdminLayoutClient({ children, userId }: AdminLayoutClientProps) {
     const pathname = usePathname();
+    const router = useRouter();
+
+    useEffect(() => {
+        const supabase = createClient();
+
+        const channel = supabase.channel('realtime-roles-admin')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'group_members',
+                filter: `user_id=eq.${userId}`
+            }, () => {
+                router.refresh();
+            })
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'users',
+                filter: `id=eq.${userId}`
+            }, () => {
+                router.refresh();
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [userId, router]);
 
     return (
         <div className="min-h-screen bg-[#F8FAFC]">

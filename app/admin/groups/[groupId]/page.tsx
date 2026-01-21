@@ -31,7 +31,7 @@ export default async function GroupDetailPage(props: PageProps) {
     }
 
     return (
-        <div className="min-h-screen bg-slate-50/50 p-6 md:p-12 pb-24">
+        <div className="min-h-screen bg-slate-50/50 p-4 md:p-8 pb-24">
             <div className="max-w-7xl mx-auto space-y-8">
                 {/* Breadcrumbs / Back button */}
                 <Link

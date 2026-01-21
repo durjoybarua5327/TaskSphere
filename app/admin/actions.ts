@@ -5,7 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 
 // Helper to check if user has admin rights for a group
-async function verifyGroupAdminAccess(userId: string, groupId: string) {
+export async function verifyGroupAdminAccess(userId: string, groupId: string) {
     const supabase = createAdminClient();
 
     // Check if user is top_admin in groups table
@@ -180,6 +180,17 @@ export async function addStudentToGroup(groupId: string, email: string) {
 
     if (!targetUser) return { error: "User not found with that email", success: false };
 
+    // Check if user is the Top Admin of the group
+    const { data: group } = await supabase
+        .from("groups")
+        .select("top_admin_id")
+        .eq("id", groupId)
+        .single();
+
+    if (group && group.top_admin_id === targetUser.id) {
+        return { error: "Cannot add Group Top Admin as a member", success: false };
+    }
+
     // Check if already member
     const { data: existingMember } = await supabase
         .from("group_members")
@@ -214,11 +225,22 @@ export async function updateMemberRole(membershipId: string, newRole: "student" 
     // Get the group_id for this membership to check permissions
     const { data: membership } = await supabase
         .from("group_members")
-        .select("group_id, role")
+        .select("group_id, role, user_id")
         .eq("id", membershipId)
         .single();
 
     if (!membership) return { error: "Membership not found", success: false };
+
+    // Check if target is Group Owner
+    const { data: group } = await supabase
+        .from("groups")
+        .select("top_admin_id")
+        .eq("id", membership.group_id)
+        .single();
+
+    if (group && group.top_admin_id === membership.user_id) {
+        return { error: "Cannot modify role of the Group Owner", success: false };
+    }
 
     const { authorized, role: adminRole } = await verifyGroupAdminAccess(userId, membership.group_id);
     if (!authorized) return { error: "Permission denied", success: false };
@@ -257,11 +279,22 @@ export async function removeMember(membershipId: string) {
 
     const { data: membership } = await supabase
         .from("group_members")
-        .select("group_id, role")
+        .select("group_id, role, user_id")
         .eq("id", membershipId)
         .single();
 
     if (!membership) return { error: "Membership not found", success: false };
+
+    // Check if target is Group Owner
+    const { data: group } = await supabase
+        .from("groups")
+        .select("top_admin_id")
+        .eq("id", membership.group_id)
+        .single();
+
+    if (group && group.top_admin_id === membership.user_id) {
+        return { error: "Cannot remove the Group Owner", success: false };
+    }
 
     const { authorized, role: adminRole } = await verifyGroupAdminAccess(userId, membership.group_id);
     if (!authorized) return { error: "Permission denied", success: false };
@@ -691,4 +724,38 @@ export async function getAllAdminSubmissions() {
 
     if (error) return { error: error.message, submissions: [] };
     return { submissions: data || [] };
+}
+
+export async function uploadTaskAttachment(formData: FormData) {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", url: null };
+
+    const file = formData.get('file') as File;
+    if (!file) return { error: "No file provided", url: null };
+
+    // Basic validation? Assuming admin knows what they are doing.
+    // 50MB limit
+    if (file.size > 50 * 1024 * 1024) {
+        return { error: "File too large (max 50MB)", url: null };
+    }
+
+    const supabase = createAdminClient();
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    const { error } = await supabase.storage
+        .from('task-attachments')
+        .upload(filePath, file);
+
+    if (error) {
+        console.error("Upload error:", error);
+        return { error: error.message, url: null };
+    }
+
+    const { data } = supabase.storage
+        .from('task-attachments')
+        .getPublicUrl(filePath);
+
+    return { url: data.publicUrl, error: null };
 }

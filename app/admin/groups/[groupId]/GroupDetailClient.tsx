@@ -43,15 +43,13 @@ import {
     handleJoinRequest,
     getGroupMembers,
     getGroupJoinRequests,
-
     createTask,
     updateTask,
     getTasks,
     deleteTask
 } from "../../actions";
 import { useUser } from "@clerk/nextjs";
-import { RichTextEditor } from "@/components/editor/RichTextEditor";
-import { FileUpload } from "@/components/ui/file-upload";
+import { CreateTaskModal } from "./_components/create-task-modal";
 
 interface Member {
     id: string;
@@ -110,22 +108,12 @@ export function GroupDetailClient({ group, initialMembers, initialRequests, init
     const [isAdding, setIsAdding] = useState(false);
     const [activeTab, setActiveTab] = useState<'members' | 'tasks'>(initialTab);
     const [tasks, setTasks] = useState<Task[]>(initialTasks);
-    const [isCreatingTask, setIsCreatingTask] = useState(false);
-    const [newTask, setNewTask] = useState<{
-        title: string;
-        description: string;
-        deadline: string;
-        maxScore: number;
-        attachments: string[];
-    }>({
-        title: "",
-        description: "",
-        deadline: "",
-        maxScore: 10,
-        attachments: []
-    });
-    const [isEditingTask, setIsEditingTask] = useState(false);
-    const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+
+    // Task Modal State
+    const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+    const [editingTask, setEditingTask] = useState<Task | null>(null);
+    const [isCreatingTask, setIsCreatingTask] = useState(false); // Used for loading state during submit
+
     const [isLoadingTasks, setIsLoadingTasks] = useState(false);
 
     const currentUserRole = group.currentUserRole as "student" | "admin" | "top_admin";
@@ -170,8 +158,6 @@ export function GroupDetailClient({ group, initialMembers, initialRequests, init
         description: "",
         isLoading: false
     });
-
-    // ... existing loadTasks ...
 
     const handlePromote = async (memberId: string, currentRole: string) => {
         const newRole = currentRole === 'student' ? 'admin' : 'student';
@@ -257,73 +243,72 @@ export function GroupDetailClient({ group, initialMembers, initialRequests, init
         }
     };
 
-    const handleCreateTask = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleCreateTask = async (data: any) => {
         setIsCreatingTask(true);
         const result = await createTask(group.id, {
-            title: newTask.title,
-            description: newTask.description,
-            deadline: newTask.deadline,
-            max_score: newTask.maxScore,
-            attachments: newTask.attachments
+            title: data.title,
+            description: data.description,
+            deadline: data.deadline,
+            max_score: data.maxScore,
+            attachments: data.attachments
         });
         setIsCreatingTask(false);
         if (result.success) {
-            setNewTask({ title: "", description: "", deadline: "", maxScore: 10, attachments: [] });
+            setIsTaskModalOpen(false);
             loadTasks();
         } else {
             alert(result.error);
         }
     };
 
-    const handleEditTaskClick = (task: Task) => {
-        setNewTask({
-            title: task.title,
-            description: task.description,
-            deadline: task.deadline ? new Date(task.deadline).toISOString().split('T')[0] : "",
-            maxScore: task.max_score,
-            attachments: task.attachments || []
-        });
-        setEditingTaskId(task.id);
-        setIsEditingTask(true);
+    const handleUpdateTask = async (data: any) => {
+        if (!editingTask) return;
 
-        // Scroll to form (simple implementation)
-        const formElement = document.getElementById('task-form');
-        if (formElement) formElement.scrollIntoView({ behavior: 'smooth' });
-    };
-
-    const handleUpdateTask = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!editingTaskId) return;
-
-        setIsCreatingTask(true); // Reuse loading state
-        const result = await updateTask(editingTaskId, group.id, {
-            title: newTask.title,
-            description: newTask.description,
-            deadline: newTask.deadline,
-            max_score: newTask.maxScore,
-            attachments: newTask.attachments
+        setIsCreatingTask(true);
+        const result = await updateTask(editingTask.id, group.id, {
+            title: data.title,
+            description: data.description,
+            deadline: data.deadline,
+            max_score: data.maxScore,
+            attachments: data.attachments
         });
         setIsCreatingTask(false);
 
         if (result.success) {
-            setNewTask({ title: "", description: "", deadline: "", maxScore: 10, attachments: [] });
-            setEditingTaskId(null);
-            setIsEditingTask(false);
+            setEditingTask(null);
+            setIsTaskModalOpen(false);
             loadTasks();
         } else {
             alert(result.error);
         }
     };
 
-    const handleCancelEdit = () => {
-        setNewTask({ title: "", description: "", deadline: "", maxScore: 10, attachments: [] });
-        setEditingTaskId(null);
-        setIsEditingTask(false);
+    const openCreateModal = () => {
+        setEditingTask(null);
+        setIsTaskModalOpen(true);
+    };
+
+    const openEditModal = (task: Task) => {
+        setEditingTask(task);
+        setIsTaskModalOpen(true);
     };
 
     return (
         <div className="space-y-8 pb-20">
+            <CreateTaskModal
+                isOpen={isTaskModalOpen}
+                onClose={() => setIsTaskModalOpen(false)}
+                onSubmit={editingTask ? handleUpdateTask : handleCreateTask}
+                initialData={editingTask ? {
+                    title: editingTask.title,
+                    description: editingTask.description,
+                    deadline: editingTask.deadline,
+                    maxScore: editingTask.max_score,
+                    attachments: editingTask.attachments
+                } : null}
+                isSubmitting={isCreatingTask}
+            />
+
             <ConfirmModal
                 isOpen={confirmModal.isOpen}
                 onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
@@ -334,42 +319,42 @@ export function GroupDetailClient({ group, initialMembers, initialRequests, init
                 variant="danger"
                 isLoading={confirmModal.isLoading}
             />
-            {/* ... rest of the component ... */}
+
             {/* Header Section */}
-            <div className="bg-white border border-slate-100 rounded-[3rem] p-8 md:p-12 shadow-sm relative overflow-hidden">
+            <div className="bg-white border border-slate-100 rounded-[2rem] p-6 md:p-8 shadow-sm relative overflow-hidden">
                 <div className="absolute right-0 top-0 w-64 h-64 bg-emerald-50 rounded-full -mr-32 -mt-32 opacity-50 blur-3xl" />
 
-                <div className="relative flex flex-col md:flex-row gap-8 items-start justify-between">
-                    <div className="space-y-4">
+                <div className="relative flex flex-col md:flex-row gap-6 items-start justify-between">
+                    <div className="space-y-3">
                         <div className="flex items-center gap-3">
-                            <div className="px-4 py-1.5 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                            <div className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
                                 <ShieldCheck className="w-3 h-3" />
                                 {currentUserRole === 'top_admin' ? 'Top Admin Access' : 'Admin Access'}
                             </div>
-                            <div className="px-4 py-1.5 bg-slate-50 text-slate-500 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                            <div className="px-3 py-1 bg-slate-50 text-slate-500 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-2">
                                 <Users className="w-3 h-3" />
                                 {members.length} Members
                             </div>
                         </div>
 
-                        <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight uppercase leading-none">
+                        <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight uppercase leading-none">
                             {group.name}
                         </h1>
 
-                        <p className="text-slate-500 font-medium max-w-2xl text-lg">
+                        <p className="text-slate-500 font-medium max-w-2xl text-sm">
                             {group.description || "No description provided for this group."}
                         </p>
 
-                        <div className="flex flex-wrap gap-4 pt-4">
+                        <div className="flex flex-wrap gap-3 pt-2">
                             {group.institute_name && (
-                                <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                                    <Building2 className="w-4 h-4 text-emerald-500" />
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                                    <Building2 className="w-3.5 h-3.5 text-emerald-500" />
                                     {group.institute_name}
                                 </div>
                             )}
                             {group.department && (
-                                <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-100 rounded-2xl text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                                    <GraduationCap className="w-4 h-4 text-emerald-500" />
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                                    <GraduationCap className="w-3.5 h-3.5 text-emerald-500" />
                                     {group.department}
                                 </div>
                             )}
@@ -377,26 +362,26 @@ export function GroupDetailClient({ group, initialMembers, initialRequests, init
                     </div>
 
                     {/* Quick Add Member */}
-                    <div className="w-full md:w-80 bg-slate-50 border border-slate-100 rounded-[2.5rem] p-6 space-y-4">
-                        <div className="flex items-center gap-3 mb-2">
-                            <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-sm">
-                                <UserPlus className="w-4 h-4 text-emerald-600" />
+                    <div className="w-full md:w-72 bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center gap-2 mb-1">
+                            <div className="w-6 h-6 rounded-lg bg-white flex items-center justify-center shadow-sm">
+                                <UserPlus className="w-3.5 h-3.5 text-emerald-600" />
                             </div>
-                            <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Add Student</p>
+                            <p className="text-[9px] font-black text-slate-900 uppercase tracking-widest">Add Student</p>
                         </div>
-                        <form onSubmit={handleAddMember} className="space-y-3">
+                        <form onSubmit={handleAddMember} className="space-y-2">
                             <input
                                 type="email"
                                 value={newMemberEmail}
                                 onChange={(e) => setNewMemberEmail(e.target.value)}
                                 placeholder="student@email.com"
-                                className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-xs font-bold text-slate-700 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-700 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
                             />
                             <button
                                 disabled={isAdding || !newMemberEmail}
-                                className="w-full py-3 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-emerald-600 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
+                                className="w-full py-2 bg-slate-900 text-white rounded-xl font-black text-[9px] uppercase tracking-[0.2em] hover:bg-emerald-600 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
                             >
-                                {isAdding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                                {isAdding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
                                 Add to Group
                             </button>
                         </form>
@@ -433,7 +418,7 @@ export function GroupDetailClient({ group, initialMembers, initialRequests, init
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Main Content Area */}
-                <div className="lg:col-span-2 space-y-6">
+                <div className={`${activeTab === 'tasks' ? 'lg:col-span-3' : 'lg:col-span-2'} space-y-6`}>
                     <AnimatePresence mode="wait">
                         {activeTab === 'members' ? (
                             <motion.div
@@ -566,6 +551,13 @@ export function GroupDetailClient({ group, initialMembers, initialRequests, init
                                         <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Tasks</h2>
                                         {isLoadingTasks && <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />}
                                     </div>
+                                    <button
+                                        onClick={openCreateModal}
+                                        className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-green-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:shadow-lg hover:shadow-emerald-500/20 transition-all active:scale-95 flex items-center gap-2"
+                                    >
+                                        <Plus className="w-4 h-4" />
+                                        Create Task
+                                    </button>
                                 </div>
 
                                 <div className="grid grid-cols-1 gap-4">
@@ -583,47 +575,79 @@ export function GroupDetailClient({ group, initialMembers, initialRequests, init
                                         </div>
                                     ) : (
                                         tasks.map((task) => (
-                                            <div key={task.id} className="bg-white border border-slate-100 rounded-[2.5rem] p-6 group hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500">
-                                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                                    <div className="space-y-3">
+                                            <div key={task.id} className="bg-white border border-slate-100 rounded-[1.5rem] p-4 group hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500">
+                                                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                                                    <div className="space-y-2 flex-1 min-w-0">
                                                         <div className="flex items-center gap-2">
-                                                            <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-full text-[8px] font-black uppercase tracking-widest">
+                                                            <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[8px] font-black uppercase tracking-widest">
                                                                 {task.max_score} Points Max
                                                             </span>
                                                             {task.deadline && (
-                                                                <span className="px-3 py-1 bg-red-50 text-red-600 rounded-full text-[8px] font-black uppercase tracking-widest flex items-center gap-1.5">
-                                                                    <Calendar className="w-3 h-3" />
+                                                                <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded-full text-[8px] font-black uppercase tracking-widest flex items-center gap-1">
+                                                                    <Calendar className="w-2.5 h-2.5" />
                                                                     Due {new Date(task.deadline).toLocaleDateString()}
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">{task.title}</h3>
-                                                        <p className="text-slate-500 text-xs font-bold leading-relaxed line-clamp-2">{task.description}</p>
+                                                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight truncate">{task.title}</h3>
+                                                        <div
+                                                            className="text-slate-500 text-[10px] font-bold leading-relaxed line-clamp-2 prose prose-sm max-w-none prose-p:m-0 prose-headings:m-0"
+                                                            dangerouslySetInnerHTML={{
+                                                                __html: task.description ? task.description.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&') : ''
+                                                            }}
+                                                        />
+
+                                                        {/* Attachments Preview */}
+                                                        {task.attachments && task.attachments.length > 0 && (
+                                                            <div className="flex items-center gap-2 pt-1 overflow-x-auto pb-2 scrollbar-hide">
+                                                                {task.attachments.map((url, i) => {
+                                                                    const isImage = url.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+                                                                    const fileName = url.split('/').pop()?.split('_').slice(1).join('_') || "File";
+
+                                                                    if (isImage) {
+                                                                        return (
+                                                                            <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="relative w-10 h-10 flex-shrink-0 rounded-lg overflow-hidden border border-slate-200 group/img">
+                                                                                <img src={url} alt="Attachment" className="w-full h-full object-cover" />
+                                                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                                                                                    <Eye className="w-3 h-3 text-white" />
+                                                                                </div>
+                                                                            </a>
+                                                                        );
+                                                                    }
+                                                                    return (
+                                                                        <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 px-2 py-1.5 bg-slate-50 border border-slate-100 rounded-lg text-[9px] font-bold text-slate-600 hover:bg-slate-100 transition-colors whitespace-nowrap">
+                                                                            <Paperclip className="w-3 h-3 text-slate-400" />
+                                                                            <span className="max-w-[80px] truncate">{fileName}</span>
+                                                                        </a>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
                                                     </div>
 
-                                                    <div className="flex items-center gap-3">
+                                                    <div className="flex items-center gap-2 flex-shrink-0">
                                                         <button
                                                             onClick={() => router.push(`/admin/groups/${group.id}/tasks/${task.id}`)}
-                                                            className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 transition-all active:scale-95 flex items-center gap-2"
+                                                            className="px-4 py-2 bg-slate-900 text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-emerald-600 transition-all active:scale-95 flex items-center gap-2 whitespace-nowrap"
                                                         >
-                                                            <Eye className="w-4 h-4" />
-                                                            View Submissions
+                                                            <Eye className="w-3 h-3" />
+                                                            Submissions
                                                         </button>
                                                         {(currentUserRole === 'top_admin' || currentUser?.id === task.creator_id) && (
                                                             <>
                                                                 <button
-                                                                    onClick={() => handleEditTaskClick(task)}
-                                                                    className="w-12 h-12 flex items-center justify-center bg-slate-100 text-slate-600 rounded-2xl hover:bg-emerald-50 hover:text-emerald-600 transition-all"
+                                                                    onClick={() => openEditModal(task)}
+                                                                    className="w-8 h-8 flex items-center justify-center bg-slate-100 text-slate-600 rounded-xl hover:bg-emerald-50 hover:text-emerald-600 transition-all"
                                                                     title="Edit Task"
                                                                 >
-                                                                    <Pencil className="w-4 h-4" />
+                                                                    <Pencil className="w-3 h-3" />
                                                                 </button>
                                                                 <button
                                                                     onClick={() => handleDeleteTaskClick(task.id)}
-                                                                    className="w-12 h-12 flex items-center justify-center bg-red-50 text-red-500 rounded-2xl hover:bg-red-100 transition-all"
+                                                                    className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded-xl hover:bg-red-100 transition-all"
                                                                     title="Delete Task"
                                                                 >
-                                                                    <Trash2 className="w-4 h-4" />
+                                                                    <Trash2 className="w-3 h-3" />
                                                                 </button>
                                                             </>
                                                         )}
@@ -641,7 +665,7 @@ export function GroupDetailClient({ group, initialMembers, initialRequests, init
                 {/* Sidebar */}
                 <div className="space-y-6">
                     <AnimatePresence mode="wait">
-                        {activeTab === 'members' ? (
+                        {activeTab === 'members' && (
                             <motion.div
                                 key="members-sidebar"
                                 initial={{ opacity: 0, x: 20 }}
@@ -703,91 +727,6 @@ export function GroupDetailClient({ group, initialMembers, initialRequests, init
                                             ))}
                                         </div>
                                     )}
-                                </div>
-                            </motion.div>
-                        ) : (
-                            <motion.div
-                                key="tasks-sidebar"
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -20 }}
-                                className="space-y-6"
-                            >
-                                <div className="px-4 flex items-center justify-between">
-                                    <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
-                                        {isEditingTask ? "Edit Task" : "Create Task"}
-                                    </h2>
-                                    {isEditingTask && (
-                                        <button
-                                            onClick={handleCancelEdit}
-                                            className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-700"
-                                        >
-                                            Cancel
-                                        </button>
-                                    )}
-                                </div>
-
-                                <div id="task-form" className="bg-white border border-slate-100 rounded-[2.5rem] p-8 space-y-6 shadow-sm">
-                                    <form onSubmit={isEditingTask ? handleUpdateTask : handleCreateTask} className="space-y-5">
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Task Title</label>
-                                            <input
-                                                required
-                                                type="text"
-                                                value={newTask.title}
-                                                onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                                                placeholder="e.g. Weekly Assignment 1"
-                                                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-xs font-bold text-slate-700 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
-                                            />
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Description</label>
-                                            <RichTextEditor
-                                                content={newTask.description}
-                                                onChange={(content) => setNewTask({ ...newTask, description: content })}
-                                                placeholder="Describe the task requirements..."
-                                                className="min-h-[200px]"
-                                            />
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Attachments</label>
-                                            <FileUpload
-                                                value={newTask.attachments}
-                                                onChange={(urls) => setNewTask({ ...newTask, attachments: urls })}
-                                            />
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Deadline</label>
-                                                <input
-                                                    type="date"
-                                                    value={newTask.deadline}
-                                                    onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })}
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-[10px] font-bold text-slate-700 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Max Score</label>
-                                                <input
-                                                    type="number"
-                                                    value={newTask.maxScore}
-                                                    onChange={(e) => setNewTask({ ...newTask, maxScore: parseInt(e.target.value) })}
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-xs font-bold text-slate-700 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <button
-                                            disabled={isCreatingTask}
-                                            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-emerald-600 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-slate-200"
-                                        >
-                                            {isCreatingTask ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                                            {isEditingTask ? "Update Task" : "Publish Task"}
-                                        </button>
-                                    </form>
                                 </div>
                             </motion.div>
                         )}

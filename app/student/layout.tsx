@@ -40,5 +40,5 @@ export default async function StudentLayout({
         });
     }
 
-    return <StudentLayoutClient role={role}>{children}</StudentLayoutClient>;
+    return <StudentLayoutClient role={role} userId={userId}>{children}</StudentLayoutClient>;
 }
