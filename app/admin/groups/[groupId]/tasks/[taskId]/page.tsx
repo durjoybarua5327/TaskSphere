@@ -1,11 +1,10 @@
 import { Suspense } from "react";
-import { notFound } from "next/navigation";
-import { getTasks, getSubmissions, verifyGroupAdminAccess } from "../../../../actions";
-import { TaskSubmissionViewer } from "./TaskSubmissionViewer";
-import { TaskHeaderClient } from "./TaskHeaderClient";
-import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { notFound, redirect } from "next/navigation";
+import { createAdminClient } from "@/lib/supabase-admin";
 import { auth } from "@clerk/nextjs/server";
+import { TaskHeaderClient } from "./TaskHeaderClient";
+import { SubmissionList } from "./SubmissionList";
+import { getSubmissions } from "@/app/admin/actions";
 
 interface PageProps {
     params: Promise<{
@@ -14,58 +13,82 @@ interface PageProps {
     }>;
 }
 
-export default async function TaskSubmissionsPage(props: PageProps) {
-    const params = await props.params;
-    const { groupId, taskId } = params;
+async function getTaskDetails(taskId: string) {
+    const supabase = createAdminClient();
+    const { data: task, error } = await supabase
+        .from("tasks")
+        .select(`
+            *,
+            creator:creator_id (
+                id,
+                full_name,
+                avatar_url
+            )
+        `)
+        .eq("id", taskId)
+        .single();
+
+    if (error || !task) return null;
+    return task;
+}
+
+export default async function TaskSubmissionsPage({ params }: PageProps) {
+    const { groupId, taskId } = await params;
     const { userId } = await auth();
 
-    if (!userId) {
-        return notFound();
-    }
+    if (!userId) redirect("/sign-in");
 
-    const { role } = await verifyGroupAdminAccess(userId, groupId);
-
-    const [tasksRes, submissionsRes] = await Promise.all([
-        getTasks(groupId),
+    // Get task details and submissions
+    const [task, submissionsRes] = await Promise.all([
+        getTaskDetails(taskId),
         getSubmissions(taskId)
     ]);
-
-    const task = tasksRes.tasks?.find((t: any) => t.id === taskId);
 
     if (!task) {
         return notFound();
     }
 
-    return (
-        <div className="min-h-screen bg-slate-50/50 p-4 md:p-4 pb-24">
-            <div className="max-w-7xl mx-auto space-y-8">
-                {/* Breadcrumbs */}
-                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">
-                    <Link href="/admin/groups" className="hover:text-emerald-600 transition-colors flex items-center gap-1">
-                        <ChevronLeft className="w-3 h-3" />
-                        Groups
-                    </Link>
-                    <ChevronRight className="w-3 h-3 text-slate-300" />
-                    <Link href={`/admin/groups/${groupId}?tab=tasks`} className="hover:text-emerald-600 transition-colors">
-                        Tasks
-                    </Link>
-                    <ChevronRight className="w-3 h-3 text-slate-300" />
-                    <span className="text-emerald-600">Submissions</span>
-                </div>
+    // Verify user role for the group
+    const supabase = createAdminClient();
+    const { data: member } = await supabase
+        .from("group_members")
+        .select("role")
+        .eq("group_id", groupId)
+        .eq("user_id", userId)
+        .single();
 
+    const isTopAdmin = task.creator_id === userId; // Or logic based on group.top_admin_id
+
+    // Check super admin status
+    const { data: userData } = await supabase
+        .from("users")
+        .select("is_super_admin")
+        .eq("id", userId)
+        .single();
+
+    const isSuperAdmin = userData?.is_super_admin || false;
+    const isAdmin = member?.role === 'admin' || member?.role === 'top_admin' || isSuperAdmin;
+
+    if (!isAdmin) {
+        redirect(`/student/tasks/${taskId}`);
+    }
+
+    return (
+        <div className="min-h-screen bg-slate-50/50 p-4 md:p-8 pb-24">
+            <div className="max-w-7xl mx-auto space-y-8">
                 <TaskHeaderClient
                     task={task}
                     groupId={groupId}
                     submissionsCount={submissionsRes.submissions?.length || 0}
-                    currentUserRole={role}
+                    currentUserRole={member?.role || (isSuperAdmin ? 'top_admin' : null)}
                     currentUserId={userId}
                 />
 
                 <Suspense fallback={<div className="h-96 bg-white animate-pulse rounded-[3rem]" />}>
-                    <TaskSubmissionViewer
+                    <SubmissionList
                         submissions={submissionsRes.submissions || []}
+                        maxScore={task.max_score}
                         taskId={taskId}
-                        groupId={groupId}
                     />
                 </Suspense>
             </div>

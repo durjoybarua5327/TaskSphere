@@ -73,7 +73,7 @@ export function CreatePostModal({ isOpen, onClose, editData }: CreatePostModalPr
         };
 
         const result = editData
-            ? await updatePost(editData.id, data)
+            ? await updatePost({ id: editData.id, ...data })
             : await createPost(data);
 
         setLoading(false);

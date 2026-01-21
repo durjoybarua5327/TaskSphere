@@ -10,6 +10,8 @@ import {
     approveGroupRequest,
     rejectGroupRequest,
     getGroupMembers,
+    getGroupJoinRequests,
+    handleJoinRequest,
     updateMemberRole,
     removeMemberFromGroup
 } from "../actions";
@@ -73,6 +75,17 @@ interface GroupRequest {
     } | null;
 }
 
+interface JoinRequest {
+    id: string;
+    user: {
+        id: string;
+        full_name: string | null;
+        email: string;
+        avatar_url: string | null;
+    } | null;
+    created_at: string;
+}
+
 interface GroupsClientProps {
     initialGroups: Group[];
     initialRequests: GroupRequest[];
@@ -87,6 +100,7 @@ export function GroupsClient({ initialGroups, initialRequests, myGroupIds = [] }
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedGroupForMembers, setSelectedGroupForMembers] = useState<Group | null>(null);
     const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
+    const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
     const [isFetchingMembers, setIsFetchingMembers] = useState(false);
     const [viewMode, setViewMode] = useState<"all" | "my">("all"); // Default to "All Groups" for Super Admin
 
@@ -213,10 +227,19 @@ export function GroupsClient({ initialGroups, initialRequests, myGroupIds = [] }
     const handleViewMembers = async (group: Group) => {
         setSelectedGroupForMembers(group);
         setIsFetchingMembers(true);
-        const result = await getGroupMembers(group.id);
-        if (result.members) {
-            setGroupMembers(result.members as GroupMember[]);
+
+        const [membersResult, requestsResult] = await Promise.all([
+            getGroupMembers(group.id),
+            getGroupJoinRequests(group.id)
+        ]);
+
+        if (membersResult.members) {
+            setGroupMembers(membersResult.members as GroupMember[]);
         }
+        if (requestsResult.requests) {
+            setJoinRequests(requestsResult.requests as JoinRequest[]);
+        }
+
         setIsFetchingMembers(false);
     };
 
@@ -239,7 +262,21 @@ export function GroupsClient({ initialGroups, initialRequests, myGroupIds = [] }
         }
     };
 
-    const handleRejectRequest = async (request: GroupRequest) => {
+    const handleJoinRequestAction = async (requestId: string, action: "approved" | "rejected") => {
+        const result = await handleJoinRequest(requestId, action);
+        if (result.success && selectedGroupForMembers) {
+            // Refresh both lists as approving moves user to members
+            const [membersResult, requestsResult] = await Promise.all([
+                getGroupMembers(selectedGroupForMembers.id),
+                getGroupJoinRequests(selectedGroupForMembers.id)
+            ]);
+
+            if (membersResult.members) setGroupMembers(membersResult.members as GroupMember[]);
+            if (requestsResult.requests) setJoinRequests(requestsResult.requests as JoinRequest[]);
+        }
+    };
+
+    const handleRejectRequest = async (request: GroupRequest) => { // This is group creation request
         openModal({
             type: "delete",
             title: "Reject Request",
@@ -413,9 +450,11 @@ export function GroupsClient({ initialGroups, initialRequests, myGroupIds = [] }
                 onClose={() => setSelectedGroupForMembers(null)}
                 groupName={selectedGroupForMembers?.name || ""}
                 members={groupMembers}
+                requests={joinRequests}
                 isLoading={isFetchingMembers}
                 onUpdateRole={handleUpdateMemberRole}
                 onRemove={handleRemoveMember}
+                onRequestAction={handleJoinRequestAction}
             />
         </div>
     );
@@ -522,19 +561,24 @@ function MembersModal({
     onClose,
     groupName,
     members,
+    requests,
     isLoading,
     onUpdateRole,
-    onRemove
+    onRemove,
+    onRequestAction
 }: {
     isOpen: boolean;
     onClose: () => void;
     groupName: string;
     members: GroupMember[];
+    requests: JoinRequest[];
     isLoading: boolean;
     onUpdateRole: (id: string, role: "student" | "admin" | "top_admin") => void;
     onRemove: (id: string) => void;
+    onRequestAction: (id: string, action: "approved" | "rejected") => void;
 }) {
     if (!isOpen) return null;
+    const [activeTab, setActiveTab] = useState<"members" | "requests">("members");
 
     return (
         <AnimatePresence>
@@ -553,112 +597,170 @@ function MembersModal({
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                        <div>
-                            <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase mb-1">{groupName}</h2>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Community Members ({members.length})</p>
+                    <div className="p-8 border-b border-slate-100 bg-slate-50/50">
+                        <div className="flex items-center justify-between mb-6">
+                            <div>
+                                <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase mb-1">{groupName}</h2>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Community Management</p>
+                            </div>
+                            <button
+                                onClick={onClose}
+                                className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-red-500 transition-all hover:rotate-90"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
                         </div>
-                        <button
-                            onClick={onClose}
-                            className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 hover:text-red-500 transition-all hover:rotate-90"
-                        >
-                            <X className="w-5 h-5" />
-                        </button>
+
+                        <div className="flex bg-slate-200/50 p-1 rounded-xl">
+                            <button
+                                onClick={() => setActiveTab("members")}
+                                className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${activeTab === 'members' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Members ({members.length})
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("requests")}
+                                className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${activeTab === 'requests' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Requests ({requests.length})
+                            </button>
+                        </div>
                     </div>
 
-                    {/* Members List */}
+                    {/* Content */}
                     <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                         {isLoading ? (
                             <div className="flex flex-col items-center justify-center py-20 gap-4">
                                 <ActivityIcon className="w-8 h-8 text-emerald-500 animate-spin" />
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Synchronizing Members...</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Synchronizing...</p>
                             </div>
-                        ) : members.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
-                                <div className="w-16 h-16 rounded-[1.5rem] bg-slate-50 flex items-center justify-center border border-slate-100">
-                                    <Users className="w-8 h-8 text-slate-300" />
+                        ) : activeTab === 'members' ? (
+                            members.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
+                                    <div className="w-16 h-16 rounded-[1.5rem] bg-slate-50 flex items-center justify-center border border-slate-100">
+                                        <Users className="w-8 h-8 text-slate-300" />
+                                    </div>
+                                    <div>
+                                        <p className="text-slate-900 font-black text-lg">No members found</p>
+                                        <p className="text-slate-400 text-xs font-bold uppercase mt-1">This community is currently empty</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="text-slate-900 font-black text-lg">No members found</p>
-                                    <p className="text-slate-400 text-xs font-bold uppercase mt-1">This community is currently empty</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                {members.map((member) => (
-                                    <div key={member.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-[2rem] hover:bg-white hover:border-emerald-100 hover:shadow-lg transition-all duration-300 group/member">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden shadow-sm">
-                                                {member.user?.avatar_url ? (
-                                                    <img src={member.user.avatar_url} alt="" className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <User className="w-6 h-6 text-slate-300" />
-                                                )}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h4 className="text-sm font-black text-slate-900 truncate max-w-[150px] uppercase tracking-tight">
-                                                        {member.user?.full_name || "Anonymous Member"}
-                                                    </h4>
-                                                    {member.role === 'top_admin' && (
-                                                        <div className="p-1 bg-amber-50 rounded-lg">
-                                                            <Shield className="w-3 h-3 text-amber-500" />
-                                                        </div>
-                                                    )}
-                                                    {member.role === 'admin' && (
-                                                        <div className="p-1 bg-emerald-50 rounded-lg">
-                                                            <Shield className="w-3 h-3 text-emerald-500" />
-                                                        </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {members.map((member) => (
+                                        <div key={member.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-[2rem] hover:bg-white hover:border-emerald-100 hover:shadow-lg transition-all duration-300 group/member">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden shadow-sm">
+                                                    {member.user?.avatar_url ? (
+                                                        <img src={member.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <User className="w-6 h-6 text-slate-300" />
                                                     )}
                                                 </div>
-                                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{member.user?.email}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center gap-4">
-                                            {/* Role & Controls */}
-                                            <div className="flex items-center gap-1.5 border-r border-slate-100 pr-4 mr-2">
-                                                <div className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest border transition-all duration-500 ${member.role === 'top_admin'
-                                                    ? "bg-amber-50 border-amber-100 text-amber-600"
-                                                    : member.role === 'admin'
-                                                        ? "bg-emerald-50 border-emerald-100 text-emerald-600"
-                                                        : "bg-white border-slate-100 text-slate-400"
-                                                    }`}>
-                                                    {member.role.replace('_', ' ')}
-                                                </div>
-                                            </div>
-
-                                            {member.role !== 'top_admin' && (
-                                                <div className="flex items-center gap-3">
-                                                    {/* Admin Toggle */}
+                                                <div>
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none">Admin</span>
+                                                        <h4 className="text-sm font-black text-slate-900 truncate max-w-[150px] uppercase tracking-tight">
+                                                            {member.user?.full_name || "Anonymous Member"}
+                                                        </h4>
+                                                        {member.role === 'top_admin' && (
+                                                            <div className="p-1 bg-amber-50 rounded-lg">
+                                                                <Shield className="w-3 h-3 text-amber-500" />
+                                                            </div>
+                                                        )}
+                                                        {member.role === 'admin' && (
+                                                            <div className="p-1 bg-emerald-50 rounded-lg">
+                                                                <Shield className="w-3 h-3 text-emerald-500" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{member.user?.email}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex items-center gap-1.5 border-r border-slate-100 pr-4 mr-2">
+                                                    <div className={`px-4 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest border transition-all duration-500 ${member.role === 'top_admin'
+                                                        ? "bg-amber-50 border-amber-100 text-amber-600"
+                                                        : member.role === 'admin'
+                                                            ? "bg-emerald-50 border-emerald-100 text-emerald-600"
+                                                            : "bg-white border-slate-100 text-slate-400"
+                                                        }`}>
+                                                        {member.role.replace('_', ' ')}
+                                                    </div>
+                                                </div>
+
+                                                {member.role !== 'top_admin' && (
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest leading-none">Admin</span>
+                                                            <button
+                                                                onClick={() => onUpdateRole(member.id, member.role === 'admin' ? 'student' : 'admin')}
+                                                                className={`w-9 h-5 rounded-full transition-all relative shadow-inner ${member.role === 'admin' ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                                                            >
+                                                                <motion.div
+                                                                    animate={{ x: member.role === 'admin' ? 16 : 0 }}
+                                                                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                                                    className="absolute top-1 left-1 w-3 h-3 bg-white rounded-full shadow-md"
+                                                                />
+                                                            </button>
+                                                        </div>
+
                                                         <button
-                                                            onClick={() => onUpdateRole(member.id, member.role === 'admin' ? 'student' : 'admin')}
-                                                            className={`w-9 h-5 rounded-full transition-all relative shadow-inner ${member.role === 'admin' ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                                                            onClick={() => onRemove(member.id)}
+                                                            title="Remove from Community"
+                                                            className="p-2.5 hover:bg-red-50 text-red-400 hover:text-red-500 rounded-xl transition-all border border-transparent hover:border-red-100 shadow-sm active:scale-90"
                                                         >
-                                                            <motion.div
-                                                                animate={{ x: member.role === 'admin' ? 16 : 0 }}
-                                                                transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                                                                className="absolute top-1 left-1 w-3 h-3 bg-white rounded-full shadow-md"
-                                                            />
+                                                            <Trash2 className="w-4 h-4" />
                                                         </button>
                                                     </div>
-
-                                                    {/* Remove Button */}
-                                                    <button
-                                                        onClick={() => onRemove(member.id)}
-                                                        title="Remove from Community"
-                                                        className="p-2.5 hover:bg-red-50 text-red-400 hover:text-red-500 rounded-xl transition-all border border-transparent hover:border-red-100 shadow-sm active:scale-90"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            )}
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            )
+                        ) : (
+                            requests.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <p className="text-slate-500 font-medium">No pending requests</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {requests.map((request) => (
+                                        <div key={request.id} className="flex items-center justify-between p-4 bg-amber-50/50 border border-amber-100 rounded-[2rem]">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden">
+                                                    {request.user?.avatar_url ? (
+                                                        <img src={request.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <User className="w-5 h-5 text-slate-300" />
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-sm font-bold text-slate-900">{request.user?.full_name || "Unknown User"}</h4>
+                                                    <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider mt-1">{request.user?.email}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => onRequestAction(request.id, "approved")}
+                                                    className="p-2 bg-emerald-100 text-emerald-600 rounded-xl hover:bg-emerald-200 transition-colors"
+                                                    title="Approve"
+                                                >
+                                                    <Check className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => onRequestAction(request.id, "rejected")}
+                                                    className="p-2 bg-red-100 text-red-600 rounded-xl hover:bg-red-200 transition-colors"
+                                                    title="Reject"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )
                         )}
                     </div>
 

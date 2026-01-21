@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS groups (
     department TEXT,
     topics TEXT[],
     top_admin_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    admin_only_chat BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -134,6 +135,15 @@ CREATE TABLE IF NOT EXISTS messages (
     content TEXT NOT NULL,
     is_ai_response BOOLEAN DEFAULT FALSE,
     is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- GROUP MESSAGES Table (Group Chat System)
+CREATE TABLE IF NOT EXISTS group_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    group_id UUID REFERENCES groups(id) ON DELETE CASCADE,
+    sender_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -240,6 +250,10 @@ CREATE INDEX IF NOT EXISTS idx_messages_sender_receiver ON messages(sender_id, r
 CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
 
+-- Group messages indexes
+CREATE INDEX IF NOT EXISTS idx_group_messages_group_id ON group_messages(group_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_group_messages_sender ON group_messages(sender_id);
+
 -- Tasks and submissions indexes (Composite for ordering and group filtering)
 CREATE INDEX IF NOT EXISTS idx_tasks_group_created ON tasks(group_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_group_id ON tasks(group_id);
@@ -307,6 +321,7 @@ ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE likes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE group_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE submissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scores ENABLE ROW LEVEL SECURITY;
@@ -389,6 +404,42 @@ CREATE POLICY "Users can view their own messages" ON messages FOR SELECT USING (
 DROP POLICY IF EXISTS "Users can send messages" ON messages;
 CREATE POLICY "Users can send messages" ON messages FOR INSERT WITH CHECK (sender_id = (select auth.uid()::text));
 
+-- GROUP_MESSAGES Policies
+DROP POLICY IF EXISTS "Group members can view group messages" ON group_messages;
+CREATE POLICY "Group members can view group messages" ON group_messages 
+FOR SELECT USING (
+    EXISTS (
+        SELECT 1 FROM group_members 
+        WHERE group_id = group_messages.group_id 
+        AND user_id = (select auth.uid()::text)
+    )
+);
+
+DROP POLICY IF EXISTS "Group members can send messages" ON group_messages;
+CREATE POLICY "Group members can send messages" ON group_messages 
+FOR INSERT WITH CHECK (
+    sender_id = (select auth.uid()::text) AND
+    EXISTS (
+        SELECT 1 FROM group_members gm
+        JOIN groups g ON g.id = gm.group_id
+        WHERE gm.group_id = group_messages.group_id 
+        AND gm.user_id = (select auth.uid()::text)
+        AND (
+            -- If admin_only_chat is false, anyone can send
+            g.admin_only_chat = FALSE OR
+            -- If admin_only_chat is true, only admins/top_admins can send
+            gm.role IN ('admin', 'top_admin') OR
+            g.top_admin_id = (select auth.uid()::text)
+        )
+    )
+);
+
+DROP POLICY IF EXISTS "Users can delete own messages" ON group_messages;
+CREATE POLICY "Users can delete own messages" ON group_messages
+FOR DELETE USING (
+    sender_id = (select auth.uid()::text)
+);
+
 -- TASKS Policies
 DROP POLICY IF EXISTS "Tasks viewable by group members" ON tasks;
 CREATE POLICY "Tasks viewable by group members" ON tasks FOR SELECT USING (
@@ -466,6 +517,7 @@ ALTER publication supabase_realtime ADD TABLE posts;
 ALTER publication supabase_realtime ADD TABLE likes;
 ALTER publication supabase_realtime ADD TABLE comments;
 ALTER publication supabase_realtime ADD TABLE notifications;
+ALTER publication supabase_realtime ADD TABLE group_messages;
 
 -- ============================================
 -- 7. ADDITIONAL MIGRATIONS (Task Attachments)

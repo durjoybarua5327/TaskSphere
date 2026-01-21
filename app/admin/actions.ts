@@ -549,6 +549,7 @@ export async function submitTask(taskId: string, data: {
     content?: string;
     file_url?: string;
     link_url?: string;
+    attachments?: string[];
 }) {
     const { userId } = await auth();
     if (!userId) return { error: "Not authenticated", success: false };
@@ -589,6 +590,7 @@ export async function submitTask(taskId: string, data: {
                 content: data.content,
                 file_url: data.file_url,
                 link_url: data.link_url,
+                attachments: (data as any).attachments || [],
                 submitted_at: new Date().toISOString()
             })
             .eq("id", existing.id);
@@ -601,7 +603,8 @@ export async function submitTask(taskId: string, data: {
                 student_id: userId,
                 content: data.content,
                 file_url: data.file_url,
-                link_url: data.link_url
+                link_url: data.link_url,
+                attachments: (data as any).attachments || []
             });
         error = insertError;
     }
@@ -653,6 +656,64 @@ export async function getSubmissions(taskId: string) {
     return { submissions: data || [] };
 }
 
+export async function scoreSubmission(submissionId: string, scoreValue: number, feedback: string) {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", success: false };
+
+    const supabase = createAdminClient();
+
+    // Verify requesting user is admin of the group this submission belongs to
+    const { data: submission } = await supabase
+        .from("submissions")
+        .select(`
+            id,
+            task: task_id(
+                group_id
+            )
+        `)
+        .eq("id", submissionId)
+        .single();
+
+    if (!submission) return { error: "Submission not found", success: false };
+
+    const { authorized } = await verifyGroupAdminAccess(userId, (submission.task as any).group_id);
+    if (!authorized) return { error: "Permission denied", success: false };
+
+    // Update if exists, else insert
+    const { data: existing } = await supabase
+        .from("scores")
+        .select("id")
+        .eq("submission_id", submissionId)
+        .single();
+
+    let error;
+    if (existing) {
+        const { error: updateError } = await supabase
+            .from("scores")
+            .update({
+                score_value: scoreValue,
+                feedback: feedback,
+                grader_id: userId
+            })
+            .eq("id", existing.id);
+        error = updateError;
+    } else {
+        const { error: insertError } = await supabase
+            .from("scores")
+            .insert({
+                submission_id: submissionId,
+                score_value: scoreValue,
+                feedback: feedback,
+                grader_id: userId
+            });
+        error = insertError;
+    }
+
+    if (error) return { error: error.message, success: false };
+
+    return { success: true };
+}
+
 export async function getMySubmission(taskId: string) {
     const { userId } = await auth();
     if (!userId) return { error: "Not authenticated" };
@@ -661,8 +722,8 @@ export async function getMySubmission(taskId: string) {
     const { data, error } = await supabase
         .from("submissions")
         .select(`
-            *,
-            scores (
+        *,
+            scores(
                 score_value,
                 feedback
             )
@@ -689,9 +750,9 @@ export async function getAllAdminTasks() {
         .from("tasks")
         .select(`
             *,
-            group:group_id (name),
-            creator:creator_id (full_name),
-            submissions:submissions(count)
+            group: group_id(name),
+            creator: creator_id(full_name),
+            submissions: submissions(count)
         `)
         .in("group_id", groupIds)
         .order("created_at", { ascending: false });
@@ -713,10 +774,10 @@ export async function getAllAdminSubmissions() {
     const { data, error } = await supabase
         .from("submissions")
         .select(`
-            *,
-            task:task_id (title, group:group_id(id, name)),
-            student:student_id (full_name, email, avatar_url),
-            scores (score_value)
+        *,
+            task: task_id(title, group: group_id(id, name)),
+            student: student_id(full_name, email, avatar_url),
+            scores(score_value)
         `)
         .in("task_id", taskIds)
         .order("submitted_at", { ascending: false })
@@ -758,4 +819,133 @@ export async function uploadTaskAttachment(formData: FormData) {
         .getPublicUrl(filePath);
 
     return { url: data.publicUrl, error: null };
+}
+
+// ==================== PROFILE ACTIONS ====================
+
+export async function updateProfile(data: {
+    fullName?: string;
+    instituteName?: string;
+    portfolioUrl?: string;
+    avatarUrl?: string;
+}) {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated" };
+
+    const supabase = createAdminClient();
+
+    const updates: any = {};
+    if (data.fullName !== undefined) updates.full_name = data.fullName;
+    if (data.avatarUrl !== undefined) updates.avatar_url = data.avatarUrl;
+    if (data.instituteName !== undefined) updates.institute_name = data.instituteName;
+    if (data.portfolioUrl !== undefined) updates.portfolio_url = data.portfolioUrl;
+
+    const { error } = await supabase
+        .from("users")
+        .update(updates)
+        .eq("id", userId);
+
+    if (error) return { error: error.message };
+
+    revalidatePath("/admin/profile");
+    return { success: true };
+}
+
+export async function getProfile() {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", profile: null };
+
+    const supabase = createAdminClient();
+
+    const { data, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", userId)
+        .single();
+
+    if (error) return { error: error.message, profile: null };
+    return { profile: data };
+}
+
+export async function getMyPosts() {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", posts: [] };
+
+    const supabase = createAdminClient();
+
+    const { data, error } = await supabase
+        .from("posts")
+        .select(`
+        *,
+            users: author_id(
+                id,
+                full_name,
+                email,
+                avatar_url
+            ),
+            likes: likes(user_id),
+            comments: comments(count)
+        `)
+        .eq("author_id", userId)
+        .order("created_at", { ascending: false });
+
+    if (error) return { error: error.message, posts: [] };
+    return { posts: data || [] };
+}
+
+export async function getStudentTasks() {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", tasks: [] };
+
+    const supabase = createAdminClient();
+
+    // 1. Get groups user is a member of
+    const { data: memberships } = await supabase
+        .from("group_members")
+        .select("group_id")
+        .eq("user_id", userId);
+
+    const groupIds = memberships?.map(m => m.group_id) || [];
+    if (groupIds.length === 0) return { tasks: [] };
+
+    // 2. Get tasks for those groups
+    const { data: tasks, error } = await supabase
+        .from("tasks")
+        .select(`
+        *,
+            group: group_id(name, id),
+            creator: creator_id(full_name)
+        `)
+        .in("group_id", groupIds)
+        .order("created_at", { ascending: false });
+
+    if (error) return { error: error.message, tasks: [] };
+    return { tasks: tasks || [] };
+}
+
+export async function getStudentSubmissions() {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", submissions: [] };
+
+    const supabase = createAdminClient();
+
+    const { data, error } = await supabase
+        .from("submissions")
+        .select(`
+        *,
+            task: task_id(
+                id,
+                title,
+                group: group_id(id, name)
+            ),
+            scores(
+                score_value,
+                feedback
+            )
+        `)
+        .eq("student_id", userId)
+        .order("submitted_at", { ascending: false });
+
+    if (error) return { error: error.message, submissions: [] };
+    return { submissions: data || [] };
 }

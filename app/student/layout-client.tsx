@@ -10,9 +10,14 @@ type StudentLayoutClientProps = {
     children: React.ReactNode;
     role: "student" | "admin" | "top_admin" | "super_admin";
     userId: string;
+    user: {
+        imageUrl: string;
+        fullName: string | null;
+        email: string | undefined;
+    };
 };
 
-export function StudentLayoutClient({ children, role, userId }: StudentLayoutClientProps) {
+export function StudentLayoutClient({ children, role, userId, user }: StudentLayoutClientProps) {
     const pathname = usePathname();
     const router = useRouter();
 
@@ -45,7 +50,7 @@ export function StudentLayoutClient({ children, role, userId }: StudentLayoutCli
 
     return (
         <div className="min-h-screen bg-[#F8FAFC]">
-            <UnifiedNavbar role={role} baseHref="/student" />
+            <UnifiedNavbar role={role} baseHref="/student" user={user} />
 
             {/* Main Content Area */}
             <main className="pt-24 pb-20 px-6">

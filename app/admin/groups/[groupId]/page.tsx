@@ -31,8 +31,8 @@ export default async function GroupDetailPage(props: PageProps) {
     }
 
     return (
-        <div className="min-h-screen bg-slate-50/50 p-4 md:p-8 pb-24">
-            <div className="max-w-7xl mx-auto space-y-8">
+        <div className="min-h-screen bg-slate-50/50 px-4 py-4 md:px-8 md:py-6 pb-24">
+            <div className="max-w-7xl mx-auto space-y-4">
                 {/* Breadcrumbs / Back button */}
                 <Link
                     href="/admin/groups"

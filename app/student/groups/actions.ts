@@ -74,21 +74,130 @@ export async function joinGroup(groupId: string, userId: string) {
         return { error: "Unauthorized", success: false };
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient();
+
+    // Check if already a member
+    const { data: existingMember } = await supabase
+        .from("group_members")
+        .select("id")
+        .eq("group_id", groupId)
+        .eq("user_id", userId)
+        .single();
+
+    if (existingMember) {
+        return { success: true, message: "Already a member" };
+    }
+
+    // Check if already requested
+    const { data: existingRequest } = await supabase
+        .from("group_requests")
+        .select("id")
+        .eq("group_id", groupId)
+        .eq("user_id", userId)
+        .eq("status", "pending")
+        .single();
+
+    if (existingRequest) {
+        return { success: true, message: "Request already pending" };
+    }
 
     const { error } = await supabase
-        .from("group_members")
+        .from("group_requests")
         .insert({
             group_id: groupId,
             user_id: userId,
-            role: "student",
+            status: "pending",
         });
 
     if (error) {
-        console.error("Error joining group:", error);
-        return { error: "Failed to join group", success: false };
+        console.error("Error requesting to join group:", error);
+        return { error: "Failed to send join request", success: false };
+    }
+
+    revalidatePath("/student/groups");
+    return { success: true, message: "Request sent" };
+}
+
+export async function withdrawJoinRequest(groupId: string, userId: string) {
+    const { userId: authUserId } = await auth();
+
+    if (!authUserId || authUserId !== userId) {
+        return { error: "Unauthorized", success: false };
+    }
+
+    const supabase = createAdminClient();
+
+    const { error } = await supabase
+        .from("group_requests")
+        .delete()
+        .eq("group_id", groupId)
+        .eq("user_id", userId)
+        .eq("status", "pending");
+
+    if (error) {
+        console.error("Error withdrawing join request:", error);
+        return { error: "Failed to withdraw request", success: false };
     }
 
     revalidatePath("/student/groups");
     return { success: true };
+}
+
+export async function getStudentGroupsData() {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", groups: [], myGroupIds: [], pendingGroupIds: [] };
+
+    const supabase = createAdminClient();
+
+    // 1. Fetch all groups
+    const { data: allGroups, error: groupsError } = await supabase
+        .from("groups")
+        .select(`
+            *,
+            top_admin:top_admin_id (
+                id,
+                full_name,
+                email,
+                avatar_url
+            ),
+            group_members(count)
+        `)
+        .order("created_at", { ascending: false });
+
+    if (groupsError) {
+        console.error("Error fetching groups:", groupsError);
+        return { error: "Failed to fetch groups", groups: [], myGroupIds: [], pendingGroupIds: [] };
+    }
+
+    // 2. Fetch user's memberships
+    const { data: memberships } = await supabase
+        .from("group_members")
+        .select("group_id")
+        .eq("user_id", userId);
+
+    const myGroupIds = memberships?.map(m => m.group_id) || [];
+
+    // 3. Fetch user's pending requests
+    const { data: requests } = await supabase
+        .from("group_requests")
+        .select("group_id")
+        .eq("user_id", userId)
+        .eq("status", "pending");
+
+    const pendingGroupIds = requests?.map(r => r.group_id) || [];
+
+    // 4. Check if user is super admin
+    const { data: userData } = await supabase
+        .from("users")
+        .select("is_super_admin")
+        .eq("id", userId)
+        .single();
+
+    return {
+        groups: allGroups || [],
+        myGroupIds,
+        pendingGroupIds,
+        isSuperAdmin: !!userData?.is_super_admin,
+        userId
+    };
 }

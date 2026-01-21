@@ -20,9 +20,14 @@ import { NotificationPopover } from "@/components/notification-popover";
 type UnifiedNavbarProps = {
     role?: "student" | "admin" | "top_admin" | "super_admin";
     baseHref?: string;
+    user: {
+        imageUrl: string;
+        fullName: string | null;
+        email: string | undefined;
+    };
 };
 
-export function UnifiedNavbar({ role = "student", baseHref = "/student" }: UnifiedNavbarProps) {
+export function UnifiedNavbar({ role = "student", baseHref = "/student", user }: UnifiedNavbarProps) {
     const pathname = usePathname();
     const [scrolled, setScrolled] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -123,7 +128,7 @@ export function UnifiedNavbar({ role = "student", baseHref = "/student" }: Unifi
                         <div className="h-8 w-px bg-gradient-to-b from-transparent via-slate-200 to-transparent hidden sm:block"></div>
 
                         <div className="sm:block">
-                            <ProfileDropdown role={getRoleLabel()} />
+                            <ProfileDropdown role={getRoleLabel()} user={user} />
                         </div>
 
                         {/* Mobile Menu Toggle */}

@@ -17,7 +17,7 @@ interface CreateTaskModalProps {
     groups?: { id: string; name: string }[];
 }
 
-export function CreateTaskModal({ isOpen, onClose, onSubmit, initialData, isSubmitting, groups }: CreateTaskModalProps) {
+export function CreateTaskModal({ isOpen, onClose, onSubmit, initialData, isSubmitting, groups, mode = "edit" }: CreateTaskModalProps & { mode?: "create" | "edit" }) {
     const [editorKey, setEditorKey] = useState(0);
     const [data, setData] = useState({
         title: "",
@@ -89,7 +89,7 @@ export function CreateTaskModal({ isOpen, onClose, onSubmit, initialData, isSubm
                     >
                         <div className="flex items-center justify-between p-6 md:p-8 border-b border-slate-50">
                             <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
-                                {initialData ? "Edit Task" : "Create Task"}
+                                {mode === "create" ? "Create New Task" : (initialData ? "Edit Task" : "Create Task")}
                             </h2>
                             <button
                                 onClick={onClose}
@@ -187,10 +187,10 @@ export function CreateTaskModal({ isOpen, onClose, onSubmit, initialData, isSubm
                                     <button
                                         type="submit"
                                         disabled={isSubmitting}
-                                        className="px-8 py-3 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-emerald-600 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-slate-200"
+                                        className="group px-8 py-3 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-emerald-600 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-slate-200"
                                     >
-                                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                                        {initialData ? "Save Changes" : "Create Task"}
+                                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4 transition-transform duration-500 group-hover:rotate-180" />}
+                                        {mode === "create" ? "Create New Task" : (initialData ? "Save Changes" : "Create Task")}
                                     </button>
                                 </div>
                             </form>

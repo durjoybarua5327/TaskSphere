@@ -38,5 +38,16 @@ export default async function AdminLayout({
         });
     }
 
-    return <AdminLayoutClient userId={userId}>{children}</AdminLayoutClient>;
+    return (
+        <AdminLayoutClient
+            userId={userId}
+            user={{
+                imageUrl: user.imageUrl,
+                fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+                email: user.emailAddresses[0]?.emailAddress
+            }}
+        >
+            {children}
+        </AdminLayoutClient>
+    );
 }

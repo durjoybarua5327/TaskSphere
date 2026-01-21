@@ -38,5 +38,15 @@ export default async function SuperAdminLayout({
         });
     }
 
-    return <SuperAdminLayoutClient>{children}</SuperAdminLayoutClient>;
+    return (
+        <SuperAdminLayoutClient
+            user={{
+                imageUrl: user.imageUrl,
+                fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+                email: user.emailAddresses[0]?.emailAddress
+            }}
+        >
+            {children}
+        </SuperAdminLayoutClient>
+    );
 }

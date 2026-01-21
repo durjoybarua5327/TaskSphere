@@ -410,3 +410,69 @@ export async function getComments(postId: string) {
 
     return data || [];
 }
+
+export async function updateStudentProfile(data: {
+    fullName?: string;
+    instituteName?: string;
+    portfolioUrl?: string;
+    avatarUrl?: string;
+}) {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated" };
+
+    const supabase = createAdminClient();
+
+    const updates: any = {};
+    if (data.fullName !== undefined) updates.full_name = data.fullName;
+    if (data.avatarUrl !== undefined) updates.avatar_url = data.avatarUrl;
+    if (data.instituteName !== undefined) updates.institute_name = data.instituteName;
+    if (data.portfolioUrl !== undefined) updates.portfolio_url = data.portfolioUrl;
+
+    const { error } = await supabase
+        .from("users")
+        .update(updates)
+        .eq("id", userId);
+
+    if (error) return { error: error.message };
+
+    revalidatePath("/student/profile");
+    return { success: true };
+}
+
+export async function getStudentGroups() {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", groups: [] };
+
+    const supabase = createAdminClient();
+
+    // Get all groups where user is a member (any role: student, admin, or top_admin)
+    const { data: memberGroups, error: memberError } = await supabase
+        .from("group_members")
+        .select(`
+            group:group_id (
+                *,
+                top_admin:top_admin_id (
+                    id,
+                    full_name,
+                    email
+                ),
+                members:group_members(count)
+            )
+        `)
+        .eq("user_id", userId);
+
+    if (memberError) {
+        console.error("Error fetching student groups:", memberError);
+        return { error: memberError.message, groups: [] };
+    }
+
+    // Extract groups from the nested response
+    const groups = memberGroups
+        ?.map((item: any) => item.group)
+        .filter((g: any) => g !== null) || [];
+
+    // Sort by created_at desc
+    groups.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    return { groups };
+}

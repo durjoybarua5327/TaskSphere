@@ -3,15 +3,17 @@
 import { useState } from "react";
 import { GroupCard } from "./group-card";
 import { Users, Search } from "lucide-react";
+import { motion } from "framer-motion";
 
 interface GroupsViewProps {
     groups: any[];
     myGroupIds: string[];
+    pendingGroupIds?: string[];
     userId: string;
 }
 
-export function GroupsView({ groups, myGroupIds, userId }: GroupsViewProps) {
-    const [viewMode, setViewMode] = useState<"all" | "my">("my");
+export function GroupsView({ groups, myGroupIds, pendingGroupIds = [], userId }: GroupsViewProps) {
+    const [viewMode, setViewMode] = useState<"all" | "my">("all");
     const [searchQuery, setSearchQuery] = useState("");
 
     const filteredGroups = groups.filter(g => {
@@ -46,24 +48,38 @@ export function GroupsView({ groups, myGroupIds, userId }: GroupsViewProps) {
                     </div>
 
                     {/* Toggle */}
-                    <div className="flex bg-slate-100 p-1 rounded-xl shrink-0">
+                    <div className="flex bg-slate-100 p-1 rounded-xl shrink-0 relative">
                         <button
                             onClick={() => setViewMode("my")}
-                            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${viewMode === "my"
-                                    ? "bg-white text-slate-900 shadow-sm"
-                                    : "text-slate-500 hover:text-slate-700"
+                            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors relative ${viewMode === "my"
+                                ? "text-slate-900"
+                                : "text-slate-500 hover:text-slate-700"
                                 }`}
                         >
-                            My Groups
+                            <span className="relative z-10">My Groups</span>
+                            {viewMode === "my" && (
+                                <motion.div
+                                    layoutId="group-toggle"
+                                    className="absolute inset-0 bg-white rounded-lg shadow-sm"
+                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                />
+                            )}
                         </button>
                         <button
                             onClick={() => setViewMode("all")}
-                            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${viewMode === "all"
-                                    ? "bg-white text-slate-900 shadow-sm"
-                                    : "text-slate-500 hover:text-slate-700"
+                            className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors relative ${viewMode === "all"
+                                ? "text-slate-900"
+                                : "text-slate-500 hover:text-slate-700"
                                 }`}
                         >
-                            All Groups
+                            <span className="relative z-10">All Groups</span>
+                            {viewMode === "all" && (
+                                <motion.div
+                                    layoutId="group-toggle"
+                                    className="absolute inset-0 bg-white rounded-lg shadow-sm"
+                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                />
+                            )}
                         </button>
                     </div>
                 </div>
@@ -81,6 +97,7 @@ export function GroupsView({ groups, myGroupIds, userId }: GroupsViewProps) {
                                 group_purpose: group.description
                             }}
                             isMember={myGroupIds.includes(group.id)}
+                            isPending={pendingGroupIds.includes(group.id)}
                             userId={userId}
                         />
                     ))}

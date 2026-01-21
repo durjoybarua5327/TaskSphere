@@ -40,6 +40,12 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+DO $$ 
+BEGIN
+    ALTER PUBLICATION supabase_realtime DROP TABLE group_messages;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 -- 3. Drop triggers BEFORE dropping tables
 -- (Dropping a table drops its triggers, so we use DO blocks to avoid "relation does not exist" errors)
 DO $$ 
@@ -75,6 +81,7 @@ DROP TABLE IF EXISTS group_creation_messages CASCADE;
 DROP TABLE IF EXISTS group_requests CASCADE;
 DROP TABLE IF EXISTS group_members CASCADE;
 DROP TABLE IF EXISTS groups CASCADE;
+DROP TABLE IF EXISTS group_messages CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
 DROP TABLE IF EXISTS comments CASCADE;
 DROP TABLE IF EXISTS likes CASCADE;
@@ -113,6 +120,8 @@ DROP INDEX IF EXISTS idx_notifications_created_at;
 DROP INDEX IF EXISTS idx_messages_sender_receiver;
 DROP INDEX IF EXISTS idx_messages_receiver;
 DROP INDEX IF EXISTS idx_messages_created_at;
+DROP INDEX IF EXISTS idx_group_messages_group_id;
+DROP INDEX IF EXISTS idx_group_messages_sender;
 DROP INDEX IF EXISTS idx_tasks_group_created;
 DROP INDEX IF EXISTS idx_tasks_group_id;
 DROP INDEX IF EXISTS idx_submissions_task_student;

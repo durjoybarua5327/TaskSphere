@@ -313,6 +313,75 @@ export async function rejectGroupRequest(requestId: string) {
 
     if (error) return { error: error.message };
 
+    // ... (existing rejectGroupRequest) ...
+    revalidatePath("/superadmin/groups");
+    return { success: true };
+}
+
+export async function getGroupJoinRequests(groupId: string) {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", requests: [] };
+
+    // Super admin check assumed or inherent if using this action
+    const supabase = createAdminClient();
+
+    const { data, error } = await supabase
+        .from("group_requests")
+        .select(`
+            *,
+            user:user_id (
+                id,
+                full_name,
+                email,
+                avatar_url
+            )
+        `)
+        .eq("group_id", groupId)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+
+    if (error) return { error: error.message, requests: [] };
+    return { requests: data || [] };
+}
+
+export async function handleJoinRequest(requestId: string, status: "approved" | "rejected") {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", success: false };
+
+    const supabase = createAdminClient();
+
+    // Get request details
+    const { data: request } = await supabase
+        .from("group_requests")
+        .select("group_id, user_id")
+        .eq("id", requestId)
+        .single();
+
+    if (!request) return { error: "Request not found", success: false };
+
+    if (status === "approved") {
+        // Add to group_members
+        const { error: memberError } = await supabase
+            .from("group_members")
+            .insert({
+                group_id: request.group_id,
+                user_id: request.user_id,
+                role: "student"
+            });
+
+        if (memberError && memberError.code !== '23505') { // Ignore if already a member
+            return { error: memberError.message, success: false };
+        }
+    }
+
+    // Update request status
+    const { error: requestError } = await supabase
+        .from("group_requests")
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq("id", requestId);
+
+    if (requestError) return { error: requestError.message, success: false };
+
     revalidatePath("/superadmin/groups");
     return { success: true };
 }

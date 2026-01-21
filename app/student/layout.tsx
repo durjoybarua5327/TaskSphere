@@ -40,5 +40,17 @@ export default async function StudentLayout({
         });
     }
 
-    return <StudentLayoutClient role={role} userId={userId}>{children}</StudentLayoutClient>;
+    return (
+        <StudentLayoutClient
+            role={role}
+            userId={userId}
+            user={{
+                imageUrl: user.imageUrl,
+                fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+                email: user.emailAddresses[0]?.emailAddress
+            }}
+        >
+            {children}
+        </StudentLayoutClient>
+    );
 }

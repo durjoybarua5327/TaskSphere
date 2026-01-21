@@ -1,45 +1,59 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase-server";
-import { GroupCard } from "./group-card";
+import { getStudentGroupsData } from "./actions";
 import { GroupsHeader } from "./groups-header";
 import { GroupsView } from "./groups-view";
-import { Users, PlusCircle } from "lucide-react";
+import { Suspense } from "react";
 
-import { isSuperAdmin } from "@/lib/permissions";
+export const metadata = {
+    title: "Groups | TaskSphere",
+    description: "Join and manage your collaboration groups",
+};
 
-export default async function GroupsPage() {
-    const { userId } = await auth();
+export default async function StudentGroupsPage() {
+    const data = await getStudentGroupsData();
 
-    if (!userId) {
-        redirect("/sign-in");
+    if ("error" in data) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <p className="text-slate-500">{data.error}</p>
+            </div>
+        );
     }
 
-    const supabase = await createClient();
-    const [
-        { data: groups },
-        { data: userGroups },
-        isSuperAdminUser
-    ] = await Promise.all([
-        supabase.from("groups").select("*, group_members(count)").order("created_at", { ascending: false }),
-        supabase.from("group_members").select("group_id, role").eq("user_id", userId),
-        isSuperAdmin(userId)
-    ]);
-
-    const userGroupIds = new Set(userGroups?.map(g => g.group_id) || []);
-
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <GroupsHeader isSuperAdmin={isSuperAdminUser} />
+        <div className="min-h-screen bg-slate-50/50 p-6 md:p-12 pb-24">
+            <div className="max-w-7xl mx-auto space-y-8">
+                {/* Header Section */}
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                    <div className="space-y-2">
+                        <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">
+                            Collaboration Groups
+                        </h1>
+                        <p className="text-slate-500 font-medium max-w-2xl text-lg">
+                            Discover and join communities, collaborate on tasks, and track your progress with your peers.
+                        </p>
+                    </div>
+                    <GroupsHeader isSuperAdmin={data.isSuperAdmin} />
+                </div>
 
+                <Suspense fallback={<GroupsLoading />}>
+                    <GroupsView
+                        groups={data.groups}
+                        myGroupIds={data.myGroupIds}
+                        pendingGroupIds={data.pendingGroupIds}
+                        userId={data.userId}
+                    />
+                </Suspense>
+            </div>
+        </div>
+    );
+}
 
-            {/* Groups List */}
-            <GroupsView
-                groups={groups || []}
-                myGroupIds={Array.from(userGroupIds)}
-                userId={userId}
-            />
+function GroupsLoading() {
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-64 rounded-2xl bg-white border border-slate-200 animate-pulse" />
+            ))}
         </div>
     );
 }

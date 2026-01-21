@@ -246,7 +246,11 @@ export function TasksClient({ initialTasks, initialSubmissions, initialGroups }:
                             </div>
                         ) : (
                             filteredTasks.map(task => (
-                                <div key={task.id} className="bg-white border border-slate-100 rounded-[2rem] p-6 hover:shadow-lg transition-all group">
+                                <Link
+                                    key={task.id}
+                                    href={`/admin/groups/${task.group_id}/tasks/${task.id}`}
+                                    className="block bg-white border border-slate-100 rounded-[2rem] p-6 group hover:border-emerald-500/20 hover:shadow-xl hover:shadow-emerald-500/10 hover:-translate-y-1 transition-all duration-300"
+                                >
                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                                         <div className="flex items-start gap-4">
                                             <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center shrink-0">
@@ -256,10 +260,6 @@ export function TasksClient({ initialTasks, initialSubmissions, initialGroups }:
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
                                                         {task.group?.name}
-                                                    </span>
-                                                    <span className="w-1 h-1 rounded-full bg-slate-300" />
-                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                                        {task.submissions[0]?.count || 0} Submissions
                                                     </span>
                                                 </div>
                                                 <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">
@@ -275,16 +275,8 @@ export function TasksClient({ initialTasks, initialSubmissions, initialGroups }:
                                                 )}
                                             </div>
                                         </div>
-
-                                        <Link
-                                            href={`/admin/groups/${task.group_id}/tasks/${task.id}`}
-                                            className="px-6 py-3 bg-slate-50 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-50 hover:text-emerald-600 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
-                                        >
-                                            View Details
-                                            <ArrowRight className="w-3 h-3" />
-                                        </Link>
                                     </div>
-                                </div>
+                                </Link>
                             ))
                         )}
                     </motion.div>

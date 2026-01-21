@@ -1,16 +1,20 @@
 "use client";
 
-import { useClerk, useUser } from "@clerk/nextjs";
+import { useClerk } from "@clerk/nextjs";
 import { LogOut, User, ChevronDown } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 interface ProfileDropdownProps {
     role: string;
+    user: {
+        imageUrl: string;
+        fullName: string | null;
+        email: string | undefined;
+    };
 }
 
-export function ProfileDropdown({ role }: ProfileDropdownProps) {
-    const { user } = useUser();
+export function ProfileDropdown({ role, user }: ProfileDropdownProps) {
     const { signOut } = useClerk();
     const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
@@ -69,7 +73,7 @@ export function ProfileDropdown({ role }: ProfileDropdownProps) {
                                     {user.fullName || "User"}
                                 </p>
                                 <p className="text-sm text-slate-500 truncate">
-                                    {user.primaryEmailAddress?.emailAddress}
+                                    {user.email}
                                 </p>
                             </div>
                         </div>

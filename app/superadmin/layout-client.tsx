@@ -6,14 +6,19 @@ import { usePathname } from "next/navigation";
 
 type SuperAdminLayoutClientProps = {
     children: React.ReactNode;
+    user: {
+        imageUrl: string;
+        fullName: string | null;
+        email: string | undefined;
+    };
 };
 
-export function SuperAdminLayoutClient({ children }: SuperAdminLayoutClientProps) {
+export function SuperAdminLayoutClient({ children, user }: SuperAdminLayoutClientProps) {
     const pathname = usePathname();
 
     return (
         <div className="min-h-screen bg-[#F8FAFC]">
-            <UnifiedNavbar role="super_admin" baseHref="/superadmin" />
+            <UnifiedNavbar role="super_admin" baseHref="/superadmin" user={user} />
 
             {/* Main Content Area */}
             <main className="pt-24 pb-20 px-6">

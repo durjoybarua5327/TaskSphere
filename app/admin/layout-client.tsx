@@ -9,9 +9,14 @@ import { createClient } from "@/lib/supabase";
 type AdminLayoutClientProps = {
     children: React.ReactNode;
     userId: string;
+    user: {
+        imageUrl: string;
+        fullName: string | null;
+        email: string | undefined;
+    };
 };
 
-export function AdminLayoutClient({ children, userId }: AdminLayoutClientProps) {
+export function AdminLayoutClient({ children, userId, user }: AdminLayoutClientProps) {
     const pathname = usePathname();
     const router = useRouter();
 
@@ -44,7 +49,7 @@ export function AdminLayoutClient({ children, userId }: AdminLayoutClientProps) 
 
     return (
         <div className="min-h-screen bg-[#F8FAFC]">
-            <UnifiedNavbar role="admin" baseHref="/admin" />
+            <UnifiedNavbar role="admin" baseHref="/admin" user={user} />
 
             {/* Main Content Area */}
             <main className="pt-24 pb-20 px-6">
