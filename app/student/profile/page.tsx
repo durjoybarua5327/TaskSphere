@@ -1,15 +1,14 @@
-import { createClient } from "@/lib/supabase-server";
-import { currentUser } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { createAdminClient } from "@/lib/supabase-admin";
 import { StudentProfileClient } from "./student-profile-client";
 import { redirect } from "next/navigation";
 
 async function getData() {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { userId } = await auth();
 
-    if (!user) return { userId: null, profile: null, posts: [] };
+    if (!userId) return { userId: null, profile: null, posts: [] };
 
-    const userId = user.id;
+    const supabase = createAdminClient();
 
     // Fetch user profile from DB
     const { data: profile } = await supabase
