@@ -25,7 +25,8 @@ export function CreateTaskModal({ isOpen, onClose, onSubmit, initialData, isSubm
         deadline: "",
         maxScore: 10,
         attachments: [] as string[],
-        groupId: ""
+        groupId: "",
+        submissionsVisibility: "private" as "private" | "public"
     });
 
     useEffect(() => {
@@ -36,7 +37,8 @@ export function CreateTaskModal({ isOpen, onClose, onSubmit, initialData, isSubm
                 deadline: initialData.deadline ? new Date(initialData.deadline).toISOString().split('T')[0] : "",
                 maxScore: initialData.maxScore || 10,
                 attachments: initialData.attachments || [],
-                groupId: initialData.group_id || ""
+                groupId: initialData.group_id || "",
+                submissionsVisibility: initialData.submissions_visibility || "private"
             });
         } else {
             setData({
@@ -45,7 +47,8 @@ export function CreateTaskModal({ isOpen, onClose, onSubmit, initialData, isSubm
                 deadline: "",
                 maxScore: 10,
                 attachments: [],
-                groupId: groups && groups.length > 0 ? groups[0].id : ""
+                groupId: groups && groups.length > 0 ? groups[0].id : "",
+                submissionsVisibility: "private"
             });
         }
         setEditorKey(prev => prev + 1);
@@ -54,7 +57,10 @@ export function CreateTaskModal({ isOpen, onClose, onSubmit, initialData, isSubm
     // ... handleSubmit ...
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        await onSubmit(data);
+        await onSubmit({
+            ...data,
+            submissions_visibility: data.submissionsVisibility
+        });
     };
 
     // ... handleUpload ...
@@ -174,6 +180,31 @@ export function CreateTaskModal({ isOpen, onClose, onSubmit, initialData, isSubm
                                             className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition-all"
                                         />
                                     </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Student Submissions Visibility</label>
+                                    <div className="grid grid-cols-2 gap-3 p-1 bg-slate-50 rounded-2xl border border-slate-100">
+                                        <button
+                                            type="button"
+                                            onClick={() => setData({ ...data, submissionsVisibility: 'private' })}
+                                            className={`py-2.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${data.submissionsVisibility === 'private' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            🔒 Private
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setData({ ...data, submissionsVisibility: 'public' })}
+                                            className={`py-2.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${data.submissionsVisibility === 'public' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                        >
+                                            🌐 Public
+                                        </button>
+                                    </div>
+                                    <p className="text-[9px] font-bold text-slate-400 px-1 italic">
+                                        {data.submissionsVisibility === 'private'
+                                            ? "Only the student and admins can see the submission."
+                                            : "All group members can see each other's work for this task."}
+                                    </p>
                                 </div>
 
                                 <div className="pt-4 flex gap-3 justify-end">

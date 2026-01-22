@@ -158,6 +158,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     max_score INTEGER DEFAULT 10,
     ai_prompt TEXT,
     visibility TEXT DEFAULT 'group',
+    attachments TEXT[] DEFAULT '{}',
+    submissions_visibility TEXT DEFAULT 'private' CHECK (submissions_visibility IN ('private', 'public')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -169,6 +171,7 @@ CREATE TABLE IF NOT EXISTS submissions (
     content TEXT,
     file_url TEXT,
     link_url TEXT,
+    attachments TEXT[] DEFAULT '{}',
     status TEXT DEFAULT 'submitted' CHECK (status IN ('submitted', 'graded', 'revision')),
     submitted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -474,6 +477,17 @@ CREATE POLICY "Admins can view submissions" ON submissions FOR SELECT USING (
     )
 );
 
+DROP POLICY IF EXISTS "Group members can see public submissions" ON submissions;
+CREATE POLICY "Group members can see public submissions" ON submissions FOR SELECT USING (
+    EXISTS (
+        SELECT 1 FROM tasks t
+        JOIN group_members gm ON gm.group_id = t.group_id
+        WHERE t.id = submissions.task_id 
+        AND t.submissions_visibility = 'public'
+        AND gm.user_id = (select auth.uid()::text)
+    )
+);
+
 -- SCORES Policies
 DROP POLICY IF EXISTS "Users can see their scores" ON scores;
 CREATE POLICY "Users can see their scores" ON scores FOR SELECT USING (
@@ -525,6 +539,12 @@ ALTER publication supabase_realtime ADD TABLE group_messages;
 
 -- Add attachments column to tasks table
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS attachments TEXT[] DEFAULT '{}';
+
+-- Add attachments column to submissions table
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS attachments TEXT[] DEFAULT '{}';
+
+-- Add submissions_visibility column to tasks table
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS submissions_visibility TEXT DEFAULT 'private' CHECK (submissions_visibility IN ('private', 'public'));
 
 -- Create a storage bucket for task attachments if it doesn't exist
 INSERT INTO storage.buckets (id, name, public) 

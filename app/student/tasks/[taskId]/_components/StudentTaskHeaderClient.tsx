@@ -53,6 +53,17 @@ export function StudentTaskHeaderClient({ task, taskId, initialSubmission }: Stu
                         <div className="px-3 py-1 bg-amber-50 text-amber-600 rounded-full text-[9px] font-black uppercase tracking-widest">
                             Max Score: {task.max_score}
                         </div>
+                        {task.submissions_visibility === 'public' ? (
+                            <div className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                Public Submissions
+                            </div>
+                        ) : (
+                            <div className="px-3 py-1 bg-slate-50 text-slate-400 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                                Private Submissions
+                            </div>
+                        )}
                     </div>
 
                     <button

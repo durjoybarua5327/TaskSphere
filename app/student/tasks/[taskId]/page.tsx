@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import { TaskSubmissionClient } from "./TaskSubmissionClient";
 import Link from "next/link";
 import { ChevronLeft, ClipboardList, ChevronRight, Eye, Paperclip } from "lucide-react";
-import { getMySubmission } from "@/app/admin/actions";
+import { getMySubmission, getPublicSubmissions } from "@/app/admin/actions";
 import { auth } from "@clerk/nextjs/server";
 import { StudentTaskHeaderClient } from "./_components/StudentTaskHeaderClient";
 
@@ -46,6 +46,12 @@ export default async function StudentTaskDetailPage({ params }: PageProps) {
         getTaskDetails(taskId),
         getMySubmission(taskId)
     ]);
+
+    let publicSubmissions = [];
+    if (task?.submissions_visibility === 'public') {
+        const res = await getPublicSubmissions(taskId);
+        publicSubmissions = res.submissions || [];
+    }
 
     if (!task) {
         return notFound();
@@ -91,6 +97,8 @@ export default async function StudentTaskDetailPage({ params }: PageProps) {
                     <TaskSubmissionClient
                         taskId={taskId}
                         initialSubmission={submissionRes.submission}
+                        publicSubmissions={publicSubmissions}
+                        isPublic={task.submissions_visibility === 'public'}
                     />
                 </Suspense>
             </div>

@@ -27,7 +27,8 @@ export function TaskHeaderClient({ task, groupId, submissionsCount, currentUserR
             description: data.description,
             deadline: data.deadline,
             max_score: data.maxScore,
-            attachments: data.attachments
+            attachments: data.attachments,
+            submissions_visibility: data.submissions_visibility
         });
         setIsSubmitting(false);
 
@@ -149,7 +150,8 @@ export function TaskHeaderClient({ task, groupId, submissionsCount, currentUserR
                     description: task.description,
                     deadline: task.deadline,
                     maxScore: task.max_score,
-                    attachments: task.attachments
+                    attachments: task.attachments,
+                    submissions_visibility: task.submissions_visibility
                 }}
                 isSubmitting={isSubmitting}
             />

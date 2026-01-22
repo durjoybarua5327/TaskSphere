@@ -444,6 +444,7 @@ export async function createTask(groupId: string, data: {
     deadline?: string;
     max_score?: number;
     attachments?: string[];
+    submissions_visibility?: 'private' | 'public';
 }) {
     const { userId } = await auth();
     if (!userId) return { error: "Not authenticated", success: false };
@@ -461,7 +462,8 @@ export async function createTask(groupId: string, data: {
             description: data.description,
             deadline: data.deadline || null,
             max_score: data.max_score || 10,
-            attachments: data.attachments || []
+            attachments: data.attachments || [],
+            submissions_visibility: data.submissions_visibility || 'private'
         });
 
     if (error) return { error: error.message, success: false };
@@ -476,6 +478,7 @@ export async function updateTask(taskId: string, groupId: string, data: {
     deadline?: string;
     max_score?: number;
     attachments?: string[];
+    submissions_visibility?: 'private' | 'public';
 }) {
     const { userId } = await auth();
     if (!userId) return { error: "Not authenticated", success: false };
@@ -492,6 +495,7 @@ export async function updateTask(taskId: string, groupId: string, data: {
             deadline: data.deadline || null,
             max_score: data.max_score || 10,
             attachments: data.attachments || [],
+            submissions_visibility: data.submissions_visibility || 'private',
             updated_at: new Date().toISOString()
         })
         .eq("id", taskId);
@@ -944,6 +948,55 @@ export async function getStudentSubmissions() {
             )
         `)
         .eq("student_id", userId)
+        .order("submitted_at", { ascending: false });
+
+    if (error) return { error: error.message, submissions: [] };
+    return { submissions: data || [] };
+}
+
+export async function getPublicSubmissions(taskId: string) {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", submissions: [] };
+
+    const supabase = createAdminClient();
+
+    // Check if task exists and is public
+    const { data: task } = await supabase
+        .from("tasks")
+        .select("submissions_visibility, group_id")
+        .eq("id", taskId)
+        .single();
+
+    if (!task) return { error: "Task not found", submissions: [] };
+
+    // If task is private, only admin can use getSubmissions.
+    // This action is specifically for public view.
+    if (task.submissions_visibility !== 'public') {
+        return { submissions: [] };
+    }
+
+    // Verify user is in the group
+    const { data: membership } = await supabase
+        .from("group_members")
+        .select("id")
+        .eq("group_id", task.group_id)
+        .eq("user_id", userId)
+        .single();
+
+    if (!membership) return { error: "Not a member of this group", submissions: [] };
+
+    const { data, error } = await supabase
+        .from("submissions")
+        .select(`
+            *,
+            student:student_id (
+                id,
+                full_name,
+                email,
+                avatar_url
+            )
+        `)
+        .eq("task_id", taskId)
         .order("submitted_at", { ascending: false });
 
     if (error) return { error: error.message, submissions: [] };

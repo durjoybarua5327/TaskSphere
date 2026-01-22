@@ -7,6 +7,7 @@
 -- 1. Remove Storage Policies (from Migration)
 DROP POLICY IF EXISTS "Authenticated users can upload task attachments" ON storage.objects;
 DROP POLICY IF EXISTS "Public can view task attachments" ON storage.objects;
+DROP POLICY IF EXISTS "Group members can see public submissions" ON submissions;
 
 -- Remove bucket (Attempt to remove if empty, might fail if has objects, but good to try)
 DO $$
@@ -92,6 +93,7 @@ DROP TABLE IF EXISTS users CASCADE;
 -- 5. Drop functions
 DROP FUNCTION IF EXISTS public.maintain_super_admin_status() CASCADE;
 DROP FUNCTION IF EXISTS public.update_updated_at_column() CASCADE;
+DROP TYPE IF EXISTS user_role;
 
 -- 6. Drop indexes (Optional as table drops remove them, but good for completeness)
 DROP INDEX IF EXISTS idx_users_email;
