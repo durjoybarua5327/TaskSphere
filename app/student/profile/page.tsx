@@ -18,11 +18,21 @@ async function getData() {
         .eq("id", userId)
         .single();
 
-    // Fetch user posts
+    // Fetch user posts with required joins for PostFeed
     const { data: posts } = await supabase
         .from("posts")
-        .select("*")
-        .eq("user_id", userId)
+        .select(`
+            *,
+            users: author_id(
+                id,
+                full_name,
+                email,
+                avatar_url
+            ),
+            likes: likes(user_id),
+            comments: comments(count)
+        `)
+        .eq("author_id", userId)
         .order("created_at", { ascending: false });
 
     return {
@@ -56,21 +66,5 @@ export default async function ProfilePage() {
         avatar_url: profile.avatar_url || user?.imageUrl
     };
 
-    return (
-        <div className="min-h-screen bg-slate-50/50 p-6 md:p-12 pb-24">
-            <div className="max-w-7xl mx-auto space-y-8">
-                {/* Header */}
-                <div className="flex flex-col gap-2">
-                    <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase">
-                        My Profile
-                    </h1>
-                    <p className="text-slate-500 font-medium max-w-2xl">
-                        View and manage your student profile and activity log.
-                    </p>
-                </div>
-
-                <StudentProfileClient profile={completeProfile} posts={posts} currentUserId={userId} />
-            </div>
-        </div>
-    );
+    return <StudentProfileClient profile={completeProfile} posts={posts} currentUserId={userId} />;
 }

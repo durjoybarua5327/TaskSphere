@@ -102,9 +102,6 @@ export function StudentProfileClient({ profile: initialProfile, posts, currentUs
                                 <h2 className="text-4xl font-black text-slate-900 tracking-tight leading-tight mb-3">
                                     {profile.full_name || "Student"}
                                 </h2>
-                                <p className="text-sm font-bold text-emerald-600 uppercase tracking-widest">
-                                    Student Account
-                                </p>
                             </div>
 
                             <button
