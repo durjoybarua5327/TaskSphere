@@ -9,7 +9,7 @@ export const metadata = {
     description: "Manage group members, tasks, and settings",
 };
 
-export default async function ViewGroupPage({ params }: { params: { groupId: string } }) {
+export default async function ViewGroupPage({ params }: { params: Promise<{ groupId: string }> }) {
     const resolvedParams = await params;
     const { groupId } = resolvedParams;
 

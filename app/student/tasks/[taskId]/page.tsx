@@ -3,7 +3,7 @@ import { getTaskForStudent, getMySubmission } from "@/app/admin/actions";
 import { notFound, redirect } from "next/navigation";
 import { StudentTaskDetailsClient } from "./client";
 
-export default async function StudentTaskPage({ params }: { params: { taskId: string } }) {
+export default async function StudentTaskPage({ params }: { params: Promise<{ taskId: string }> }) {
     const resolvedParams = await params;
     const { taskId } = resolvedParams;
     const { userId } = await auth();

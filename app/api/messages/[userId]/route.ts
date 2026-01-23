@@ -1,11 +1,11 @@
 
 import { createAdminClient } from "@/lib/supabase-admin";
 import { auth } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
-    request: Request,
-    { params }: { params: { userId: string } }
+    request: NextRequest,
+    { params }: { params: Promise<{ userId: string }> }
 ) {
     try {
         const { userId: currentUserId } = await auth();

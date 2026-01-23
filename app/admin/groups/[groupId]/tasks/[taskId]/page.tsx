@@ -3,7 +3,7 @@ import { getTask, getSubmissions, getGroupMembers } from "@/app/admin/actions";
 import { TaskDetailsClient } from "./task-details";
 import { notFound } from "next/navigation";
 
-export default async function TaskPage({ params }: { params: { groupId: string; taskId: string } }) {
+export default async function TaskPage({ params }: { params: Promise<{ groupId: string; taskId: string }> }) {
     const resolvedParams = await params;
     const { groupId, taskId } = resolvedParams;
 

@@ -383,18 +383,18 @@ export function StudentTaskDetailsClient({ task, initialSubmission, userId, publ
                 className="max-w-3xl"
                 contentClassName="!max-h-[80vh] p-3"
             >
-                <div className="space-y-6 py-2">
+                <div className="space-y-4">
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Work Description</label>
                         <RichTextEditor
                             content={content}
                             onChange={setContent}
                             placeholder="Explain your work or paste details here..."
-                            className="h-[180px] border border-slate-100 rounded-xl overflow-hidden focus-within:ring-4 focus-within:ring-emerald-500/5 focus-within:border-emerald-200 transition-all shadow-sm"
+                            className="h-[240px] border border-slate-100 rounded-xl overflow-hidden focus-within:ring-4 focus-within:ring-emerald-500/5 focus-within:border-emerald-200 transition-all shadow-sm"
                         />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-3">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
                                 <Download className="w-3 h-3" /> UPLOAD FILES
@@ -420,7 +420,7 @@ export function StudentTaskDetailsClient({ task, initialSubmission, userId, publ
                         </div>
                     </div>
 
-                    <div className="pt-6 border-t border-slate-50 flex items-center justify-end gap-3">
+                    <div className="pt-3 border-t border-slate-50 flex items-center justify-end gap-3">
                         {successMessage && (
                             <div className="px-4 py-2 rounded-lg bg-emerald-50 text-emerald-600 text-[9px] font-black uppercase tracking-widest flex items-center gap-2 border border-emerald-100">
                                 <CheckCircle className="w-3.5 h-3.5" />

@@ -68,7 +68,7 @@ export function Modal({
                 )}
             >
                 {!hideHeader && (
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between">
                         <div className="space-y-1">
                             <h2 className="text-xl font-semibold text-slate-900 leading-none tracking-tight">
                                 {title}
@@ -89,7 +89,7 @@ export function Modal({
                     </div>
                 )}
 
-                <div className={cn("mt-2 max-h-[70vh] overflow-y-auto pr-2", contentClassName)}>
+                <div className={cn("max-h-[70vh] overflow-y-auto pr-2", contentClassName)}>
                     {children}
                 </div>
             </div>

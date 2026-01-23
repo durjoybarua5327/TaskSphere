@@ -145,7 +145,7 @@ export async function withdrawJoinRequest(groupId: string, userId: string) {
 
 export async function getStudentGroupsData() {
     const { userId } = await auth();
-    if (!userId) return { error: "Not authenticated", groups: [], myGroupIds: [], pendingGroupIds: [] };
+    if (!userId) return { error: "Not authenticated", groups: [], myGroupIds: [] as string[], pendingGroupIds: [] as string[] };
 
     const supabase = createAdminClient();
 
@@ -166,7 +166,7 @@ export async function getStudentGroupsData() {
 
     if (groupsError) {
         console.error("Error fetching groups:", groupsError);
-        return { error: "Failed to fetch groups", groups: [], myGroupIds: [], pendingGroupIds: [] };
+        return { error: "Failed to fetch groups", groups: [], myGroupIds: [] as string[], pendingGroupIds: [] as string[] };
     }
 
     // 2. Fetch user's memberships

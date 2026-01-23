@@ -10,7 +10,7 @@ export const metadata = {
     description: "View group members and tasks",
 };
 
-export default async function StudentViewGroupPage({ params }: { params: { groupId: string } }) {
+export default async function StudentViewGroupPage({ params }: { params: Promise<{ groupId: string }> }) {
     const resolvedParams = await params;
     const { groupId } = resolvedParams;
     const { userId } = await auth();
