@@ -186,10 +186,10 @@ export async function getStudentGroupsData() {
 
     const pendingGroupIds = requests?.map(r => r.group_id) || [];
 
-    // 4. Check if user is super admin
+    // 4. Check user status for profile completion and super admin
     const { data: userData } = await supabase
         .from("users")
-        .select("is_super_admin")
+        .select("is_super_admin, full_name, institute_name")
         .eq("id", userId)
         .single();
 
@@ -198,6 +198,7 @@ export async function getStudentGroupsData() {
         myGroupIds,
         pendingGroupIds,
         isSuperAdmin: !!userData?.is_super_admin,
+        isProfileComplete: !!(userData?.full_name && userData?.institute_name),
         userId
     };
 }

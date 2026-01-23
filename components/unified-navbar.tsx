@@ -33,11 +33,15 @@ export function UnifiedNavbar({ role = "student", baseHref = "/student", user }:
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     useEffect(() => {
-        const handleScroll = () => {
-            setScrolled(window.scrollY > 20);
+        const handleScroll = (e: any) => {
+            const scrollTop = e.target === window || e.target === document
+                ? window.scrollY
+                : (e.target as HTMLElement).scrollTop;
+            setScrolled(scrollTop > 20);
         };
-        window.addEventListener("scroll", handleScroll);
-        return () => window.removeEventListener("scroll", handleScroll);
+
+        window.addEventListener("scroll", handleScroll, true);
+        return () => window.removeEventListener("scroll", handleScroll, true);
     }, []);
 
     // Define navigation items based on role
@@ -68,7 +72,8 @@ export function UnifiedNavbar({ role = "student", baseHref = "/student", user }:
 
     const getRoleLabel = () => {
         if (role === "super_admin") return "Global Admin";
-        if (role === "admin" || role === "top_admin") return "Admin";
+        if (role === "top_admin") return "Top Admin";
+        if (role === "admin") return "Admin";
         return "Student";
     };
 
@@ -76,7 +81,7 @@ export function UnifiedNavbar({ role = "student", baseHref = "/student", user }:
         <>
             {/* Top Navbar */}
             <header
-                className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 ${scrolled
+                className={`fixed top-0 left-0 w-screen z-[100] transition-all duration-500 ${scrolled
                     ? "bg-white/95 backdrop-blur-2xl border-b border-slate-200/80 py-3 shadow-lg shadow-slate-900/5"
                     : "bg-white/98 py-4 border-b border-slate-100/50 shadow-sm"
                     }`}

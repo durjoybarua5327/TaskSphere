@@ -13,6 +13,7 @@ export async function createGroup(data: {
     groupId?: string;
     purpose: string;
     topAdminEmail?: string;
+    avatarUrl?: string;
 }) {
     const { userId } = await auth();
     if (!userId) return { error: "Not authenticated", success: false };
@@ -57,6 +58,18 @@ export async function createGroup(data: {
         }
     }
 
+    // Handle group avatar upload if it's a base64 data URL
+    let avatarUrl = undefined;
+    if (data.avatarUrl && data.avatarUrl.startsWith("data:image/")) {
+        const { uploadBase64Image } = await import("@/lib/upload-image");
+        const uploadResult = await uploadBase64Image(data.avatarUrl, userId, `group-${Date.now()}`);
+        if (uploadResult.url) {
+            avatarUrl = uploadResult.url;
+        } else {
+            console.error("Failed to upload group avatar:", uploadResult.error);
+        }
+    }
+
     // Create group
     const { data: newGroup, error: createError } = await supabase
         .from("groups")
@@ -66,6 +79,7 @@ export async function createGroup(data: {
             department: data.department,
             description: data.purpose,
             top_admin_id: topAdminId,
+            avatar_url: avatarUrl || data.avatarUrl,
         })
         .select()
         .single();
@@ -89,6 +103,7 @@ export async function updateGroup(groupId: string, data: {
     department: string;
     purpose: string;
     topAdminEmail?: string;
+    avatarUrl?: string;
 }) {
     const { userId } = await auth();
     if (!userId) return { error: "Not authenticated", success: false };
@@ -110,6 +125,18 @@ export async function updateGroup(groupId: string, data: {
         }
     }
 
+    // Handle group avatar upload if it's a base64 data URL
+    let avatarUrl = undefined;
+    if (data.avatarUrl && data.avatarUrl.startsWith("data:image/")) {
+        const { uploadBase64Image } = await import("@/lib/upload-image");
+        const uploadResult = await uploadBase64Image(data.avatarUrl, userId, `group-update-${Date.now()}`);
+        if (uploadResult.url) {
+            avatarUrl = uploadResult.url;
+        } else {
+            console.error("Failed to upload group avatar:", uploadResult.error);
+        }
+    }
+
     const { error } = await supabase
         .from("groups")
         .update({
@@ -118,6 +145,7 @@ export async function updateGroup(groupId: string, data: {
             department: data.department,
             description: data.purpose,
             top_admin_id: topAdminId, // This might be undefined if not provided
+            avatar_url: avatarUrl || data.avatarUrl,
             updated_at: new Date().toISOString(),
         })
         .eq("id", groupId);
@@ -580,33 +608,67 @@ export async function getProfile() {
 // ==================== MESSAGE ACTIONS ====================
 
 export async function getConversations() {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", conversations: [] };
+
     const supabase = createAdminClient();
 
+    // Fetch all messages where current super admin is involved
+    // Or just all direct messages if we want super admin to see all support chats
     const { data, error } = await supabase
-        .from("group_creation_messages")
+        .from("messages")
         .select(`
             *,
             sender:sender_id (
                 id,
                 full_name,
                 email,
-                avatar_url
+                avatar_url,
+                ai_enabled,
+                is_super_admin
+            ),
+            receiver:receiver_id (
+                id,
+                full_name,
+                email,
+                avatar_url,
+                ai_enabled,
+                is_super_admin
             )
         `)
         .order("created_at", { ascending: false });
 
     if (error) return { error: error.message, conversations: [] };
 
-    // Group by sender
+    // Group by the "student" (the non-superadmin)
     const conversationMap = new Map();
     data?.forEach(msg => {
-        if (!conversationMap.has(msg.sender_id)) {
-            conversationMap.set(msg.sender_id, {
-                userId: msg.sender_id,
-                user: msg.sender,
+        let otherUser;
+
+        // Logical check: Identify the non-superadmin in the conversation
+        const isSenderSuper = msg.sender?.is_super_admin;
+        const isReceiverSuper = msg.receiver?.is_super_admin;
+
+        if (isSenderSuper && !isReceiverSuper) {
+            otherUser = msg.receiver;
+        } else if (!isSenderSuper && isReceiverSuper) {
+            otherUser = msg.sender;
+        } else {
+            // Fallback for super-to-super or student-to-student (if any)
+            otherUser = msg.sender_id === userId ? msg.receiver : msg.sender;
+        }
+
+        if (!otherUser) return;
+
+        if (!conversationMap.has(otherUser.id)) {
+            conversationMap.set(otherUser.id, {
+                userId: otherUser.id,
+                user: otherUser,
                 lastMessage: msg,
-                unreadCount: 0,
+                unreadCount: (msg.receiver_id === userId && !msg.is_read) ? 1 : 0,
             });
+        } else if (msg.receiver_id === userId && !msg.is_read) {
+            conversationMap.get(otherUser.id).unreadCount += 1;
         }
     });
 
@@ -615,25 +677,63 @@ export async function getConversations() {
 
 export async function sendMessage(receiverId: string, content: string, isAiResponse: boolean = false) {
     const { userId } = await auth();
-    if (!userId) return { error: "Not authenticated" };
+    if (!userId) return { error: "Not authenticated", success: false };
 
-    // For now, we'll use group_creation_messages table
-    // In production, you'd want a dedicated messages table
-    return { success: true };
+    const supabase = createAdminClient();
+
+    const { data, error } = await supabase
+        .from("messages")
+        .insert({
+            sender_id: userId,
+            receiver_id: receiverId,
+            content: content.trim(),
+            is_ai_response: isAiResponse,
+            is_read: false
+        })
+        .select()
+        .single();
+
+    if (error) {
+        console.error("Error sending message:", error);
+        return { error: error.message, success: false };
+    }
+
+    revalidatePath("/superadmin/messages");
+    return { success: true, message: data };
 }
 
 export async function deleteMessage(messageId: string) {
     const { userId } = await auth();
-    if (!userId) return { error: "Not authenticated" };
+    if (!userId) return { error: "Not authenticated", success: false };
 
     const supabase = createAdminClient();
 
     const { error } = await supabase
-        .from("group_creation_messages")
+        .from("messages")
         .delete()
         .eq("id", messageId);
 
-    if (error) return { error: error.message };
+    if (error) return { error: error.message, success: false };
+
+    revalidatePath("/superadmin/messages");
+    return { success: true };
+}
+
+export async function clearAllMessages(otherUserId: string) {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", success: false };
+
+    const supabase = createAdminClient();
+
+    const { error } = await supabase
+        .from("messages")
+        .delete()
+        .or(`and(sender_id.eq.${userId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${userId})`);
+
+    if (error) {
+        console.error("Error clearing messages:", error);
+        return { error: error.message, success: false };
+    }
 
     revalidatePath("/superadmin/messages");
     return { success: true };
@@ -643,7 +743,16 @@ export async function toggleAiForUser(targetUserId: string, enabled: boolean) {
     const { userId } = await auth();
     if (!userId) return { error: "Not authenticated" };
 
-    // This would update user preferences
+    const supabase = createAdminClient();
+
+    const { error } = await supabase
+        .from("users")
+        .update({ ai_enabled: enabled })
+        .eq("id", targetUserId);
+
+    if (error) return { error: error.message };
+
+    revalidatePath("/superadmin/messages");
     return { success: true };
 }
 

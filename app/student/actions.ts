@@ -5,6 +5,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { createClient } from "@/lib/supabase-server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import { revalidatePath } from "next/cache";
+import { uploadBase64Image } from "@/lib/upload-image";
 
 export async function requestJoinGroup(groupId: string, metadata?: any) {
     const user = await currentUser();
@@ -46,19 +47,31 @@ export async function createPost({ title, content, tags, images }: {
     const supabase = createAdminClient();
 
     // Ensure user exists in our DB to maintain reference integrity
+    const { syncUserToSupabase } = await import("@/lib/permissions");
     const email = user.emailAddresses[0]?.emailAddress;
-    const { error: syncError } = await supabase
-        .from("users")
-        .upsert({
-            id: user.id,
-            email: email,
-            full_name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || email.split('@')[0],
-            avatar_url: user.imageUrl,
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
+    if (email) {
+        await syncUserToSupabase(user.id, email, {
+            name: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+            imageUrl: user.imageUrl
+        });
+    }
 
-    if (syncError) {
-        console.error("Sync error during post creation:", syncError);
+    // Handle post images upload if they are base64
+    const uploadedImages: string[] = [];
+    if (images && images.length > 0) {
+        for (const [index, img] of images.entries()) {
+            if (img.startsWith("data:image/")) {
+                const { uploadBase64Image } = await import("@/lib/upload-image");
+                const uploadResult = await uploadBase64Image(img, user.id, `post-${Date.now()}-${index}`);
+                if (uploadResult.url) {
+                    uploadedImages.push(uploadResult.url);
+                } else {
+                    console.error("Failed to upload post image:", uploadResult.error);
+                }
+            } else {
+                uploadedImages.push(img);
+            }
+        }
     }
 
     // Create the post
@@ -69,7 +82,7 @@ export async function createPost({ title, content, tags, images }: {
             title: title || null,
             content: content,
             tags: tags || [],
-            images: images || [],
+            images: uploadedImages,
             visibility: "public",
         });
 
@@ -105,13 +118,31 @@ export async function updatePost({ id, title, content, tags, images }: {
         return { error: "Unauthorized", success: false };
     }
 
+    // Handle post images upload if they are base64
+    const uploadedImages: string[] = [];
+    if (images && images.length > 0) {
+        for (const [index, img] of images.entries()) {
+            if (img.startsWith("data:image/")) {
+                const { uploadBase64Image } = await import("@/lib/upload-image");
+                const uploadResult = await uploadBase64Image(img, userId, `post-update-${Date.now()}-${index}`);
+                if (uploadResult.url) {
+                    uploadedImages.push(uploadResult.url);
+                } else {
+                    console.error("Failed to upload post image:", uploadResult.error);
+                }
+            } else {
+                uploadedImages.push(img);
+            }
+        }
+    }
+
     const { error } = await supabase
         .from("posts")
         .update({
             title: title || null,
             content: content,
             tags: tags || [],
-            images: images || [],
+            images: uploadedImages,
         })
         .eq("id", id);
 
@@ -127,24 +158,41 @@ export async function updatePost({ id, title, content, tags, images }: {
 
 export async function createNotification(
     userId: string,
-    type: "like" | "comment" | "system",
+    type: "like" | "comment" | "system" | "task_created" | "grade_received" | "task_submitted",
     actorId: string,
     postId?: string,
-    message?: string
+    message?: string,
+    metadata?: any
 ) {
     const supabase = createAdminClient();
 
     // Don't notify if user interacts with their own content
     if (userId === actorId) return;
 
-    await supabase.from("notifications").insert({
+    let dbType = type;
+    let dbMessage = message;
+
+    // Handle extended types for Schema Compatibility
+    // Schema only supports: 'like', 'comment', 'system' and NO metadata column
+    if (["task_created", "grade_received", "task_submitted"].includes(type)) {
+        dbType = "system";
+        const payload = JSON.stringify({ original_type: type, ...metadata });
+        // Encode payload into message
+        dbMessage = `$$JSON:${payload}$$${message}`;
+    }
+
+    const { error } = await supabase.from("notifications").insert({
         user_id: userId,
         actor_id: actorId,
-        type,
-        post_id: postId,
-        message,
+        type: dbType as "like" | "comment" | "system",
+        post_id: postId || null,
+        message: dbMessage,
         is_read: false
     });
+
+    if (error) {
+        console.error("Error creating notification:", error);
+    }
 }
 
 export async function getNotifications() {
@@ -420,21 +468,52 @@ export async function updateStudentProfile(data: {
     const { userId } = await auth();
     if (!userId) return { error: "Not authenticated" };
 
+    console.log("[updateStudentProfile] Starting update for user:", userId);
+    console.log("[updateStudentProfile] Data received:", { ...data, avatarUrl: data.avatarUrl?.substring(0, 50) + "..." });
+
     const supabase = createAdminClient();
 
     const updates: any = {};
     if (data.fullName !== undefined) updates.full_name = data.fullName;
-    if (data.avatarUrl !== undefined) updates.avatar_url = data.avatarUrl;
     if (data.instituteName !== undefined) updates.institute_name = data.instituteName;
     if (data.portfolioUrl !== undefined) updates.portfolio_url = data.portfolioUrl;
+
+    // Handle avatar upload if it's a base64 data URL
+    if (data.avatarUrl !== undefined && data.avatarUrl !== null) {
+        if (data.avatarUrl.startsWith("data:image/")) {
+            console.log("[updateStudentProfile] Detected base64 image, uploading to storage...");
+            // It's a base64 image, upload to storage
+            const uploadResult = await uploadBase64Image(data.avatarUrl, userId);
+
+            console.log("[updateStudentProfile] Upload result:", uploadResult);
+
+            if (uploadResult.error || !uploadResult.url) {
+                console.error("[updateStudentProfile] Upload failed:", uploadResult.error);
+                return { error: `Failed to upload avatar: ${uploadResult.error || 'Unknown upload error'}` };
+            }
+
+            updates.avatar_url = uploadResult.url;
+            console.log("[updateStudentProfile] Avatar URL set to:", uploadResult.url);
+        } else {
+            // It's already a URL
+            updates.avatar_url = data.avatarUrl;
+            console.log("[updateStudentProfile] Using existing URL:", data.avatarUrl);
+        }
+    }
+
+    console.log("[updateStudentProfile] Updates to apply:", updates);
 
     const { error } = await supabase
         .from("users")
         .update(updates)
         .eq("id", userId);
 
-    if (error) return { error: error.message };
+    if (error) {
+        console.error("[updateStudentProfile] Database update error:", error);
+        return { error: error.message };
+    }
 
+    console.log("[updateStudentProfile] Profile updated successfully");
     revalidatePath("/student/profile");
     return { success: true };
 }

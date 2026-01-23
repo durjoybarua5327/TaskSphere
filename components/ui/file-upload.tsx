@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { UploadCloud, X, File as FileIcon, Loader2, Image as ImageIcon } from "lucide-react";
-import { createClient } from "@/lib/supabase";
+import { uploadBase64Image } from "@/lib/upload-image";
 import { cn } from "@/lib/utils";
 
 interface FileUploadProps {
@@ -15,7 +15,15 @@ interface FileUploadProps {
 
 export function FileUpload({ onChange, value = [], className, onUploadFile }: FileUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
-    const supabase = createClient();
+
+    const fileToBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = (error) => reject(error);
+        });
+    };
 
     const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
@@ -32,26 +40,18 @@ export function FileUpload({ onChange, value = [], className, onUploadFile }: Fi
                     continue;
                 }
 
-                const fileExt = file.name.split('.').pop();
-                const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-                const filePath = `${fileName}`;
+                // Convert file to base64
+                const base64 = await fileToBase64(file);
 
-                const { error: uploadError } = await supabase.storage
-                    .from('task-attachments')
-                    .upload(filePath, file);
+                // Upload via server action (inspiration from create post)
+                const result = await uploadBase64Image(base64);
 
-                if (uploadError) {
-                    console.error("Upload error:", uploadError);
+                if (result.error || !result.url) {
+                    console.error("Upload error:", result.error);
                     continue;
                 }
 
-                const { data } = supabase.storage
-                    .from('task-attachments')
-                    .getPublicUrl(filePath);
-
-                if (data?.publicUrl) {
-                    newUrls.push(data.publicUrl);
-                }
+                newUrls.push(result.url);
             }
 
             onChange([...value, ...newUrls]);
@@ -75,12 +75,12 @@ export function FileUpload({ onChange, value = [], className, onUploadFile }: Fi
                 {value.map((url, index) => {
                     const isImage = url.match(/\.(jpg|jpeg|png|gif|webp)$/i);
                     return (
-                        <div key={url} className="relative group w-24 h-24 rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
+                        <div key={url} className="relative group w-16 h-16 rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
                             {isImage ? (
                                 <img src={url} alt="Attachment" className="w-full h-full object-cover" />
                             ) : (
                                 <div className="w-full h-full flex flex-col items-center justify-center p-2 text-slate-400">
-                                    <FileIcon className="w-8 h-8 mb-1" />
+                                    <FileIcon className="w-5 h-5 mb-1" />
                                     <span className="text-[8px] font-bold uppercase truncate w-full text-center">
                                         File
                                     </span>
@@ -97,12 +97,12 @@ export function FileUpload({ onChange, value = [], className, onUploadFile }: Fi
                     );
                 })}
 
-                <label className="w-24 h-24 rounded-xl border-2 border-dashed border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all flex flex-col items-center justify-center cursor-pointer group">
+                <label className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 transition-all flex flex-col items-center justify-center cursor-pointer group">
                     <div className="flex flex-col items-center gap-2 text-slate-400 group-hover:text-emerald-500 transition-colors">
                         {isUploading ? (
-                            <Loader2 className="w-6 h-6 animate-spin" />
+                            <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
-                            <UploadCloud className="w-6 h-6" />
+                            <UploadCloud className="w-4 h-4" />
                         )}
                         <span className="text-[8px] font-black uppercase tracking-widest">Upload</span>
                     </div>

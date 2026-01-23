@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useModal } from "@/components/providers/modal-provider";
 import {
     createGroup,
@@ -323,83 +324,7 @@ export function GroupsClient({ initialGroups, initialRequests, myGroupIds = [] }
             </div>
 
             {/* Pending Requests Section */}
-            <AnimatePresence>
-                {requests.length > 0 && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -20 }}
-                        className="space-y-6"
-                    >
-                        <div className="flex items-center gap-6">
-                            <h2 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2.5 uppercase">
-                                <Sparkles className="w-5 h-5 text-amber-500" />
-                                Incoming Requests
-                            </h2>
-                            <div className="h-px flex-1 bg-gradient-to-r from-slate-200 to-transparent" />
-                        </div>
 
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                            {requests.map((request) => (
-                                <motion.div
-                                    key={request.id}
-                                    layout
-                                    className="group relative bg-[#FFFBEB] border border-amber-100 rounded-[2.5rem] p-8 shadow-sm hover:shadow-xl hover:bg-white transition-all duration-500 overflow-hidden"
-                                >
-                                    <div className="absolute -right-12 -top-12 w-48 h-48 bg-amber-200/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700" />
-
-                                    <div className="relative flex items-start justify-between gap-6 mb-8">
-                                        <div className="flex items-center gap-5">
-                                            <div className="w-16 h-16 rounded-3xl bg-white border-2 border-amber-100 flex items-center justify-center shadow-inner">
-                                                <GraduationCap className="w-8 h-8 text-amber-600" />
-                                            </div>
-                                            <div>
-                                                <h3 className="text-lg font-black text-slate-900 tracking-tight mb-0.5 uppercase">
-                                                    {request.group_name || "New Community Request"}
-                                                </h3>
-                                                <div className="flex items-center gap-2 text-[8px] font-black text-amber-600 uppercase tracking-widest">
-                                                    <Clock className="w-3 h-3" />
-                                                    Pending Review
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="relative flex flex-col gap-4 mb-8">
-                                        <div className="flex items-center gap-2.5 text-xs font-bold text-slate-500">
-                                            <div className="w-6 h-6 rounded-full bg-white border border-amber-100 flex items-center justify-center">
-                                                <User className="w-3 h-3 text-amber-500" />
-                                            </div>
-                                            By {request.user?.full_name || request.user?.email}
-                                        </div>
-                                        {request.message && (
-                                            <div className="bg-white/60 p-4 rounded-2xl border border-amber-50 text-slate-600 text-sm font-medium leading-relaxed italic">
-                                                "{request.message}"
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="relative flex gap-3">
-                                        <button
-                                            onClick={() => handleApproveRequest(request)}
-                                            className="flex-1 flex items-center justify-center gap-2 py-4 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 transition-all font-black text-xs uppercase tracking-widest shadow-lg shadow-emerald-100 active:scale-95"
-                                        >
-                                            <Check className="w-4 h-4" />
-                                            Approve Request
-                                        </button>
-                                        <button
-                                            onClick={() => handleRejectRequest(request)}
-                                            className="px-6 py-4 bg-white text-red-600 border border-red-50 rounded-2xl hover:bg-red-50 transition-all font-black text-xs uppercase tracking-widest active:scale-95"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </motion.div>
-                            ))}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
 
             {/* Groups Grid Section */}
             <div className="space-y-8">
@@ -650,18 +575,22 @@ function MembersModal({
                                     {members.map((member) => (
                                         <div key={member.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-[2rem] hover:bg-white hover:border-emerald-100 hover:shadow-lg transition-all duration-300 group/member">
                                             <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden shadow-sm">
-                                                    {member.user?.avatar_url ? (
-                                                        <img src={member.user.avatar_url} alt="" className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <User className="w-6 h-6 text-slate-300" />
-                                                    )}
-                                                </div>
+                                                <Link href={`/superadmin/profile?userId=${member.user?.id}`} className="shrink-0 transition-all duration-300 hover:ring-2 hover:ring-emerald-500 hover:scale-110 shadow-sm rounded-2xl">
+                                                    <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden">
+                                                        {member.user?.avatar_url ? (
+                                                            <img src={member.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <User className="w-6 h-6 text-slate-300" />
+                                                        )}
+                                                    </div>
+                                                </Link>
                                                 <div>
                                                     <div className="flex items-center gap-2">
-                                                        <h4 className="text-sm font-black text-slate-900 truncate max-w-[150px] uppercase tracking-tight">
-                                                            {member.user?.full_name || "Anonymous Member"}
-                                                        </h4>
+                                                        <Link href={`/superadmin/profile?userId=${member.user?.id}`}>
+                                                            <h4 className="text-sm font-black text-slate-900 truncate max-w-[150px] uppercase tracking-tight hover:text-emerald-600 transition-all duration-300 hover:translate-x-1 inline-block">
+                                                                {member.user?.full_name || "Anonymous Member"}
+                                                            </h4>
+                                                        </Link>
                                                         {member.role === 'top_admin' && (
                                                             <div className="p-1 bg-amber-50 rounded-lg">
                                                                 <Shield className="w-3 h-3 text-amber-500" />
@@ -729,15 +658,19 @@ function MembersModal({
                                     {requests.map((request) => (
                                         <div key={request.id} className="flex items-center justify-between p-4 bg-amber-50/50 border border-amber-100 rounded-[2rem]">
                                             <div className="flex items-center gap-4">
-                                                <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden">
-                                                    {request.user?.avatar_url ? (
-                                                        <img src={request.user.avatar_url} alt="" className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <User className="w-5 h-5 text-slate-300" />
-                                                    )}
-                                                </div>
+                                                <Link href={`/superadmin/profile?userId=${request.user?.id}`} className="shrink-0 transition-all duration-300 hover:ring-2 hover:ring-emerald-500 hover:scale-110 shadow-sm rounded-xl">
+                                                    <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden">
+                                                        {request.user?.avatar_url ? (
+                                                            <img src={request.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <User className="w-5 h-5 text-slate-300" />
+                                                        )}
+                                                    </div>
+                                                </Link>
                                                 <div>
-                                                    <h4 className="text-sm font-bold text-slate-900">{request.user?.full_name || "Unknown User"}</h4>
+                                                    <Link href={`/superadmin/profile?userId=${request.user?.id}`}>
+                                                        <h4 className="text-sm font-bold text-slate-900 hover:text-emerald-600 transition-all duration-300 hover:translate-x-1 inline-block">{request.user?.full_name || "Unknown User"}</h4>
+                                                    </Link>
                                                     <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider mt-1">{request.user?.email}</p>
                                                 </div>
                                             </div>

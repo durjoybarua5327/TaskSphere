@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Bell, User, Heart, MessageCircle, CheckCheck } from "lucide-react";
+import { Bell, User, Heart, MessageCircle, CheckCheck, FileText, CheckCircle, ClipboardList } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
 import { getNotifications, markNotificationAsRead, markAllNotificationsAsRead } from "@/app/student/actions";
@@ -10,12 +10,13 @@ import { useRouter } from "next/navigation";
 // Define Notification Type
 type Notification = {
     id: string;
-    type: "like" | "comment" | "system";
+    type: "like" | "comment" | "system" | "task_created" | "grade_received" | "task_submitted";
     actor_id: string;
     post_id: string | null;
     message: string;
     is_read: boolean;
     created_at: string;
+    metadata?: any;
     actor?: {
         full_name: string | null;
         avatar_url: string | null;
@@ -35,9 +36,35 @@ export function NotificationPopover() {
 
     const fetchNotifications = async () => {
         const data = await getNotifications();
+
+        // Process notifications to extract metadata from message if encoded
+        const processedData = data.map((n: any) => {
+            if (n.message && n.message.startsWith("$$JSON:")) {
+                try {
+                    const parts = n.message.split("$$");
+                    // parts[0] is empty, parts[1] is "JSON:...", parts[2] is message
+                    if (parts.length >= 3) {
+                        const jsonStr = parts[1].replace("JSON:", "");
+                        const metadata = JSON.parse(jsonStr);
+                        const cleanMessage = n.message.substring(n.message.indexOf("$$", 2) + 2);
+
+                        return {
+                            ...n,
+                            type: metadata.original_type || n.type,
+                            metadata: metadata,
+                            message: cleanMessage
+                        };
+                    }
+                } catch (e) {
+                    console.error("Failed to parse notification metadata", e);
+                }
+            }
+            return n;
+        });
+
         // @ts-ignore
-        setNotifications(data);
-        setUnreadCount(data.filter((n: any) => !n.is_read).length);
+        setNotifications(processedData);
+        setUnreadCount(processedData.filter((n: any) => !n.is_read).length);
     };
 
     useEffect(() => {
@@ -73,6 +100,12 @@ export function NotificationPopover() {
 
         if (notification.post_id) {
             router.push(`/superadmin?postId=${notification.post_id}`);
+        } else if (notification.type === "task_created" && notification.metadata?.task_id) {
+            router.push(`/student/tasks/${notification.metadata.task_id}`);
+        } else if (notification.type === "grade_received" && notification.metadata?.task_id) {
+            router.push(`/student/tasks/${notification.metadata.task_id}`);
+        } else if (notification.type === "task_submitted" && notification.metadata?.task_id) {
+            router.push(`/admin/groups?taskId=${notification.metadata.task_id}`); // Redirecting to group/task view would be better if we have the route
         }
 
         setIsOpen(false);
@@ -147,6 +180,12 @@ export function NotificationPopover() {
                                                         <Heart className="w-2.5 h-2.5 text-red-500 fill-current" />
                                                     ) : notification.type === "comment" ? (
                                                         <MessageCircle className="w-2.5 h-2.5 text-blue-500 fill-current" />
+                                                    ) : notification.type === "task_created" ? (
+                                                        <ClipboardList className="w-2.5 h-2.5 text-emerald-600" />
+                                                    ) : notification.type === "grade_received" ? (
+                                                        <CheckCircle className="w-2.5 h-2.5 text-green-600" />
+                                                    ) : notification.type === "task_submitted" ? (
+                                                        <FileText className="w-2.5 h-2.5 text-indigo-600" />
                                                     ) : (
                                                         <Bell className="w-2.5 h-2.5 text-slate-500" />
                                                     )}

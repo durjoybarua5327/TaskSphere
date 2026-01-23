@@ -1,87 +1,57 @@
 import { Suspense } from "react";
-import { notFound, redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
 import { getGroupDetails, getGroupMembers, getTasks } from "@/app/admin/actions";
-import { GroupDetailClient } from "@/app/admin/groups/[groupId]/GroupDetailClient";
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { StudentGroupDetailsClient } from "./client";
+import { notFound, redirect } from "next/navigation";
+import { getStudentGroupsData } from "../actions";
 
-interface PageProps {
-    params: Promise<{
-        groupId: string;
-    }>;
-    searchParams: Promise<{
-        tab?: string;
-    }>;
-}
+export const metadata = {
+    title: "Group Details | TaskSphere",
+    description: "View group members and tasks",
+};
 
-export default async function StudentGroupDetailPage(props: PageProps) {
+export default async function StudentViewGroupPage({ params }: { params: { groupId: string } }) {
+    const resolvedParams = await params;
+    const { groupId } = resolvedParams;
     const { userId } = await auth();
+
     if (!userId) {
         redirect("/sign-in");
     }
 
-    const { groupId } = await props.params;
-    const { tab } = await props.searchParams;
+    // Check if user is a member of this group
+    const groupsData = await getStudentGroupsData();
+    const isMember = groupsData.myGroupIds.includes(groupId);
 
-    // Fetch data using admin actions (which students can call for read-only data)
+    if (!isMember) {
+        // If not a member, maybe they can't see the details? 
+        // Or they see limited info. For now, let's redirect to groups list if not member.
+        redirect("/student/groups");
+    }
+
     const [groupRes, membersRes, tasksRes] = await Promise.all([
         getGroupDetails(groupId),
         getGroupMembers(groupId),
         getTasks(groupId)
     ]);
 
-    if (!groupRes.group) {
-        return notFound();
+    if (groupRes.error || !groupRes.group) {
+        notFound();
     }
 
-    // Verify membership - student must be a member to see this page
-    if (groupRes.group.currentUserRole === 'none') {
-        redirect("/student/groups");
-    }
+    // Transform tasks
+    const tasksWithGroup = tasksRes.tasks?.map((t: any) => ({
+        ...t,
+        group: { name: groupRes.group.name },
+        group_id: groupId
+    })) || [];
 
     return (
-        <div className="min-h-screen bg-slate-50/50 px-4 py-4 md:px-8 md:py-6 pb-24">
-            <div className="max-w-7xl mx-auto space-y-4">
-                {/* Breadcrumbs / Back button */}
-                <Link
-                    href="/student/groups"
-                    className="flex items-center gap-2 text-slate-400 hover:text-emerald-600 transition-colors font-black text-[10px] uppercase tracking-widest group w-fit"
-                >
-                    <div className="p-2 bg-white border border-slate-100 rounded-xl group-hover:border-emerald-100 transition-all">
-                        <ChevronLeft className="w-4 h-4" />
-                    </div>
-                    Back to Groups
-                </Link>
-
-                <Suspense fallback={<GroupDetailLoading />}>
-                    <GroupDetailClient
-                        group={groupRes.group}
-                        initialMembers={(membersRes.members as any) || []}
-                        initialRequests={[]} // Students don't see join requests
-                        initialTasks={(tasksRes.tasks as any) || []}
-                        initialTab={(tab as 'members' | 'tasks') || 'tasks'}
-                        readOnly={true}
-                    />
-                </Suspense>
-            </div>
-        </div>
-    );
-}
-
-function GroupDetailLoading() {
-    return (
-        <div className="space-y-8 animate-pulse">
-            <div className="h-32 bg-white rounded-[2.5rem] border border-slate-100" />
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-6">
-                    <div className="h-20 bg-white rounded-3xl border border-slate-100" />
-                    <div className="h-96 bg-white rounded-[2.5rem] border border-slate-100" />
-                </div>
-                <div className="space-y-6">
-                    <div className="h-64 bg-white rounded-[2.5rem] border border-slate-100" />
-                </div>
-            </div>
-        </div>
+        <StudentGroupDetailsClient
+            initialGroup={groupRes.group}
+            initialMembers={membersRes.members || []}
+            initialTasks={tasksWithGroup}
+            currentUserId={userId}
+        />
     );
 }

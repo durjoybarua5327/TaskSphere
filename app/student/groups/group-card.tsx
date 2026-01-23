@@ -8,7 +8,7 @@ type Group = {
     id: string;
     name: string;
     description: string | null;
-    university_name: string | null;
+    institute_name: string | null;
     department: string | null;
     group_purpose: string | null;
     created_at: string;
@@ -20,7 +20,7 @@ type Group = {
     } | null;
 };
 
-export function GroupCard({ group, isMember, isPending = false, userId }: { group: Group; isMember: boolean; isPending?: boolean; userId: string }) {
+export function GroupCard({ group, isMember, isPending = false, userId, isProfileComplete = true }: { group: Group; isMember: boolean; isPending?: boolean; userId: string; isProfileComplete?: boolean }) {
     const router = useRouter();
     const [isJoining, setIsJoining] = useState(false);
     const [joined, setJoined] = useState(isMember);
@@ -100,10 +100,10 @@ export function GroupCard({ group, isMember, isPending = false, userId }: { grou
 
             {/* ... Group Details ... */}
             <div className="space-y-2 mb-4 flex-1">
-                {group.university_name && (
+                {group.institute_name && (
                     <div className="flex items-center gap-2 text-sm text-slate-600">
                         <Building2 className="w-4 h-4 text-indigo-500" />
-                        <span>{group.university_name}</span>
+                        <span>{group.institute_name}</span>
                     </div>
                 )}
 
@@ -157,9 +157,9 @@ export function GroupCard({ group, isMember, isPending = false, userId }: { grou
                     ) : (
                         <Button
                             onClick={handleJoin}
-                            disabled={isJoining}
+                            disabled={isJoining || !isProfileComplete}
                             size="sm"
-                            className="bg-indigo-600 hover:bg-indigo-700"
+                            className={!isProfileComplete ? "bg-slate-200 text-slate-500 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"}
                         >
                             {isJoining ? "Sending..." : "Request to Join"}
                         </Button>

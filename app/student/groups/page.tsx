@@ -41,6 +41,7 @@ export default async function StudentGroupsPage() {
                         myGroupIds={data.myGroupIds}
                         pendingGroupIds={data.pendingGroupIds}
                         userId={data.userId}
+                        isProfileComplete={data.isProfileComplete}
                     />
                 </Suspense>
             </div>

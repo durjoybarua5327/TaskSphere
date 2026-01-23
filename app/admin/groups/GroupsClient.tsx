@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useModal } from "@/components/providers/modal-provider";
 import {
     updateGroupInfo,
@@ -160,12 +161,22 @@ export function GroupsClient({ initialGroups }: GroupsClientProps) {
         }
     };
 
-    const handleRemoveMember = async (membershipId: string) => {
-        const result = await removeMember(membershipId);
-        if (result.success && selectedGroupForMembers) {
-            // Update local state
-            setGroupMembers(prev => prev.filter(m => m.id !== membershipId));
-        }
+    const handleRemoveMember = async (membershipId: string, memberName: string) => {
+        openModal({
+            type: "delete",
+            title: "Remove Member",
+            description: `Are you sure you want to remove ${memberName} from this group? This will revoke their access to all tasks and materials.`,
+            isDestructive: true,
+            confirmText: "Remove Member",
+            onConfirm: async () => {
+                const result = await removeMember(membershipId);
+                if (result.success && selectedGroupForMembers) {
+                    setGroupMembers(prev => prev.filter(m => m.id !== membershipId));
+                } else if (!result.success) {
+                    alert("Failed to remove member: " + result.error);
+                }
+            },
+        });
     };
 
     const handleRequestAction = async (requestId: string, action: "approved" | "rejected") => {
@@ -337,7 +348,7 @@ function MembersModal({
     requests: JoinRequest[];
     isLoading: boolean;
     onUpdateRole: (id: string, role: "student" | "admin" | "top_admin") => void;
-    onRemove: (id: string) => void;
+    onRemove: (id: string, name: string) => void;
     onRequestAction: (id: string, action: "approved" | "rejected") => void;
 }) {
     if (!isOpen) return null;
@@ -406,21 +417,25 @@ function MembersModal({
                                 <div className="space-y-4">
                                     {members.map((member) => (
                                         <div key={member.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-[2rem] hover:bg-white hover:border-emerald-100 hover:shadow-lg transition-all duration-300">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden">
-                                                    {member.user?.avatar_url ? (
-                                                        <img src={member.user.avatar_url} alt="" className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <User className="w-5 h-5 text-slate-300" />
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <h4 className="text-sm font-bold text-slate-900">{member.user?.full_name || "Unknown User"}</h4>
-                                                    <p className="text-[10px] bg-slate-200 px-2 py-0.5 rounded-full inline-block text-slate-600 font-bold uppercase tracking-wider mt-1">{member.role}</p>
+                                            <div className="flex items-center gap-4 flex-1 min-w-0">
+                                                <Link href={`/admin/profile?userId=${member.user?.id}`} className="shrink-0">
+                                                    <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden transition-all duration-300 hover:ring-2 hover:ring-emerald-500 hover:scale-110 shadow-sm">
+                                                        {member.user?.avatar_url ? (
+                                                            <img src={member.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <User className="w-5 h-5 text-slate-300" />
+                                                        )}
+                                                    </div>
+                                                </Link>
+                                                <div className="min-w-0">
+                                                    <Link href={`/admin/profile?userId=${member.user?.id}`}>
+                                                        <h4 className="text-sm font-bold text-slate-900 hover:text-emerald-600 transition-all duration-300 hover:translate-x-1 inline-block">{member.user?.full_name || "Unknown User"}</h4>
+                                                    </Link>
+                                                    <p className="text-[10px] bg-slate-200 px-2 py-0.5 rounded-full inline-block text-slate-600 font-bold uppercase tracking-wider mt-1 block w-fit">{member.role}</p>
                                                 </div>
                                             </div>
                                             <button
-                                                onClick={() => onRemove(member.id)}
+                                                onClick={() => onRemove(member.id, member.user?.full_name || "Unknown User")}
                                                 className="text-slate-400 hover:text-red-500 transition-colors"
                                             >
                                                 <X className="w-4 h-4" />
@@ -438,17 +453,21 @@ function MembersModal({
                                 <div className="space-y-4">
                                     {requests.map((request) => (
                                         <div key={request.id} className="flex items-center justify-between p-4 bg-amber-50/50 border border-amber-100 rounded-[2rem]">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden">
-                                                    {request.user?.avatar_url ? (
-                                                        <img src={request.user.avatar_url} alt="" className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <User className="w-5 h-5 text-slate-300" />
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <h4 className="text-sm font-bold text-slate-900">{request.user?.full_name || "Unknown User"}</h4>
-                                                    <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider mt-1">{request.user?.email}</p>
+                                            <div className="flex items-center gap-4 flex-1 min-w-0">
+                                                <Link href={`/admin/profile?userId=${request.user?.id}`} className="shrink-0">
+                                                    <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden transition-all duration-300 hover:ring-2 hover:ring-emerald-500 hover:scale-110 shadow-sm">
+                                                        {request.user?.avatar_url ? (
+                                                            <img src={request.user.avatar_url} alt="" className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <User className="w-5 h-5 text-slate-300" />
+                                                        )}
+                                                    </div>
+                                                </Link>
+                                                <div className="min-w-0">
+                                                    <Link href={`/admin/profile?userId=${request.user?.id}`}>
+                                                        <h4 className="text-sm font-bold text-slate-900 hover:text-emerald-600 transition-all duration-300 hover:translate-x-1 inline-block">{request.user?.full_name || "Unknown User"}</h4>
+                                                    </Link>
+                                                    <p className="text-[10px] text-amber-600 font-bold uppercase tracking-wider mt-1 truncate">{request.user?.email}</p>
                                                 </div>
                                             </div>
                                             <div className="flex gap-2">

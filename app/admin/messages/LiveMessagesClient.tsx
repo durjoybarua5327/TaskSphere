@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
     Search,
     Smile,
@@ -13,13 +14,18 @@ import {
     MessageCircle,
     Lock,
     Unlock,
-    Trash2
+    Trash2,
+    Contact
 } from "lucide-react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase";
-import { sendGroupMessage, getGroupMessages, toggleAdminOnlyChat, deleteGroupMessage } from "./actions";
+import { sendGroupMessage, getGroupMessages, toggleAdminOnlyChat, deleteGroupMessage, clearDirectMessages, deleteDirectMessage } from "./actions";
+import { sendDirectMessage, getDirectMessages } from "@/app/direct-messages/actions";
 import { useUser } from "@clerk/nextjs";
+import { useModal } from "@/components/providers/modal-provider";
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
+import { Sparkles, Bot, Info } from "lucide-react";
 
 interface Message {
     id: string;
@@ -27,6 +33,7 @@ interface Message {
     sender_id: string;
     content: string;
     created_at: string;
+    is_ai_response?: boolean;
     sender?: {
         id: string;
         full_name: string;
@@ -44,9 +51,19 @@ interface Group {
     members?: any[];
 }
 
-export function LiveMessagesClient({ initialGroups }: { initialGroups: Group[] }) {
+interface SuperAdmin {
+    id: string;
+    full_name: string | null;
+    avatar_url: string | null;
+    email: string;
+}
+
+export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath = "/student/profile" }: { initialGroups: Group[], superAdmin: SuperAdmin | null, profileBasePath?: string }) {
+    const router = useRouter();
     const { user } = useUser();
+    const { openModal } = useModal();
     const [activeGroupId, setActiveGroupId] = useState<string | null>(initialGroups.length > 0 ? initialGroups[0].id : null);
+    const [isDirectChat, setIsDirectChat] = useState(false);
     const [messageInput, setMessageInput] = useState("");
     const [messages, setMessages] = useState<Message[]>([]);
     const [loading, setLoading] = useState(false);
@@ -54,12 +71,25 @@ export function LiveMessagesClient({ initialGroups }: { initialGroups: Group[] }
     const [groups, setGroups] = useState<Group[]>(initialGroups);
     const [sendError, setSendError] = useState<string>("");
     const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [isClearingHistory, setIsClearingHistory] = useState(false);
     const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState("");
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
-    const supabase = createClient();
+    const [supabase] = useState(() => createClient());
 
     const activeGroup = groups.find(g => g.id === activeGroupId);
+
+    // Derived filtered groups
+    const filteredGroups = groups.filter(group =>
+        group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        group.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    // Sync state with server props (for realtime sidebar updates)
+    useEffect(() => {
+        setGroups(initialGroups);
+    }, [initialGroups]);
 
     // Check if current user is admin of active group
     const isGroupAdmin = () => {
@@ -71,115 +101,217 @@ export function LiveMessagesClient({ initialGroups }: { initialGroups: Group[] }
         return false;
     };
 
-    // Load messages when group changes
+    // Load messages when group or direct chat changes
     useEffect(() => {
+        if (isDirectChat && superAdmin) {
+            loadDirectMessages();
+            return;
+        }
+
         if (!activeGroupId) {
             setMessages([]);
             return;
         }
 
         loadMessages();
-    }, [activeGroupId]);
+    }, [activeGroupId, isDirectChat]);
 
-    // Set up realtime subscription
+    // Set up global realtime for sidebar updates
     useEffect(() => {
-        if (!activeGroupId) return;
+        const channel = supabase
+            .channel('global_chat_updates')
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'messages' },
+                () => { router.refresh(); }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'group_messages' },
+                () => { router.refresh(); }
+            )
+            .subscribe();
 
-        console.log('Setting up realtime for group:', activeGroupId);
+        return () => { supabase.removeChannel(channel); };
+    }, [router]);
+
+    // Set up realtime subscription for current chat
+    useEffect(() => {
+        if (isDirectChat && (!superAdmin || !user?.id)) return;
+
+        console.log('Setting up realtime for:', isDirectChat ? 'direct chat' : `group ${activeGroupId}`);
+
+        const channelId = isDirectChat ? `direct_messages_${user?.id}` : `group_messages_${activeGroupId}`;
+        const table = isDirectChat ? 'messages' : 'group_messages';
+        // PostgREST filter string for the realtime listener
+        const realtimeFilter = isDirectChat ? undefined : `group_id=eq.${activeGroupId}`;
 
         const channel = supabase
-            .channel(`group_messages_${activeGroupId}`, {
-                config: {
-                    broadcast: { self: true },
-                },
-            })
+            .channel(channelId)
             .on(
                 'postgres_changes',
                 {
-                    event: 'INSERT',
+                    event: '*',
                     schema: 'public',
-                    table: 'group_messages',
-                    filter: `group_id=eq.${activeGroupId}`
+                    table: table,
+                    filter: realtimeFilter,
                 },
                 async (payload: any) => {
-                    console.log('New message received:', payload);
-                    // Fetch the full message with sender details
-                    const { data } = await supabase
-                        .from('group_messages')
-                        .select(`
-                            *,
-                            sender:sender_id (
-                                id,
-                                full_name,
-                                avatar_url
-                            )
-                        `)
-                        .eq('id', payload.new.id)
-                        .single();
+                    console.log('Realtime Event:', payload.eventType, payload.new?.id || payload.old?.id);
 
-                    if (data) {
-                        console.log('Adding message to state:', data);
-                        setMessages(prev => [...prev, data as Message]);
-                        setTimeout(() => scrollToBottom(), 100);
+                    if (payload.eventType === 'DELETE') {
+                        setMessages(prev => prev.filter(m => m.id !== payload.old.id));
+                        return;
+                    }
+
+                    if (payload.eventType !== 'INSERT') return;
+
+                    // For group messages, verify it belongs to current group (extra safety)
+                    if (!isDirectChat && payload.new.group_id !== activeGroupId) return;
+
+                    // For direct messages, verify it involves current user
+                    if (isDirectChat) {
+                        const isRelevant = payload.new.sender_id === user?.id ||
+                            payload.new.receiver_id === user?.id;
+                        if (!isRelevant) return;
+                    }
+
+                    // Avoid duplicate messages if optimistically added
+                    let exists = false;
+                    setMessages(prev => {
+                        exists = prev.some(msg => msg.id === payload.new.id ||
+                            (msg.content === payload.new.content &&
+                                msg.sender_id === payload.new.sender_id &&
+                                Math.abs(new Date(msg.created_at).getTime() - new Date(payload.new.created_at).getTime()) < 5000));
+                        return prev;
+                    });
+
+                    if (!exists) {
+                        // Fetch full message with sender details asynchronously
+                        const { data, error } = await supabase
+                            .from(table)
+                            .select(`
+                                *,
+                                sender:sender_id (
+                                    id,
+                                    full_name,
+                                    avatar_url
+                                )
+                            `)
+                            .eq('id', payload.new.id)
+                            .single();
+
+                        if (data && !error) {
+                            setMessages(current => {
+                                if (current.some(m => m.id === data.id)) return current;
+                                return [...current, data as Message];
+                            });
+                            // Smooth scroll for new messages
+                            setTimeout(() => scrollToBottom('smooth'), 100);
+                        }
                     }
                 }
             )
-            .on(
-                'postgres_changes',
-                {
-                    event: 'DELETE',
-                    schema: 'public',
-                    table: 'group_messages',
-                    filter: `group_id=eq.${activeGroupId}`
-                },
-                (payload: any) => {
-                    console.log('Message deleted:', payload);
-                    // Remove message from state
-                    setMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
-                }
-            )
-            .subscribe((status) => {
-                console.log('Realtime subscription status:', status);
+            .subscribe((status: string) => {
+                console.log(`Realtime Status (${isDirectChat ? 'Direct' : 'Group'}):`, status);
             });
 
         return () => {
-            console.log('Cleaning up realtime for group:', activeGroupId);
             supabase.removeChannel(channel);
         };
-    }, [activeGroupId, supabase]);
+    }, [activeGroupId, isDirectChat, user?.id, superAdmin?.id]);
 
-    // Auto-scroll to bottom when messages change
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
-
-    const loadMessages = async () => {
+    const loadMessages = async (silent = false) => {
         if (!activeGroupId) return;
 
-        setLoading(true);
-        const { messages: fetchedMessages } = await getGroupMessages(activeGroupId);
+        if (!silent) setLoading(true);
+        const { messages: fetchedMessages } = await getGroupReceipts(activeGroupId);
         setMessages(fetchedMessages || []);
-        setLoading(false);
+        if (!silent) {
+            setLoading(false);
+            // No need for scrollToBottom with flex-col-reverse initial state
+        }
     };
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Helper to fetch group messages (keeping original function name for consistency)
+    const getGroupReceipts = getGroupMessages;
+
+    const loadDirectMessages = async (silent = false) => {
+        if (!superAdmin) return;
+
+        if (!silent) setLoading(true);
+        const { messages: fetchedMessages } = await getDirectMessages(superAdmin.id);
+        const formattedMessages = fetchedMessages?.map(m => ({
+            ...m,
+            sender: m.sender_id === user?.id ? {
+                id: user?.id || 'me',
+                full_name: user?.fullName || 'You',
+                avatar_url: user?.imageUrl || undefined
+            } : {
+                id: superAdmin.id,
+                full_name: 'Ai assistant',
+                avatar_url: superAdmin.avatar_url || undefined
+            }
+        })) as Message[];
+        setMessages(formattedMessages || []);
+        if (!silent) {
+            setLoading(false);
+            // No need for scrollToBottom with flex-col-reverse initial state
+        }
+    };
+
+    const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+        messagesEndRef.current?.scrollIntoView({ behavior });
     };
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!messageInput.trim() || !activeGroupId) return;
+        const content = messageInput.trim();
+        if (!content || !user) return;
 
-        const content = messageInput;
+        // Optimistic UI update
+        const tempId = Date.now().toString();
+        const optimisticMessage: Message = {
+            id: tempId,
+            content,
+            sender_id: user.id,
+            group_id: activeGroupId || '',
+            created_at: new Date().toISOString(),
+            sender: {
+                id: user.id,
+                full_name: user.fullName || 'You',
+                avatar_url: user.imageUrl || undefined
+            }
+        };
+
+        setMessages(prev => [...prev, optimisticMessage]);
         setMessageInput("");
+        setTimeout(() => scrollToBottom('smooth'), 50);
         setShowEmojiPicker(false);
         setSendError("");
 
+        if (isDirectChat && superAdmin) {
+            const result = await sendDirectMessage(superAdmin.id, content);
+            if (result.success) {
+                // Silently refresh to get real ID and AI responses
+                loadDirectMessages(true);
+            } else {
+                setMessages(prev => prev.filter(m => m.id !== tempId));
+                setSendError(result.error || "Failed to send message");
+            }
+            return;
+        }
+
+        if (!activeGroupId) return;
+
         const result = await sendGroupMessage(activeGroupId, content);
         if (result.error) {
+            setMessages(prev => prev.filter(m => m.id !== tempId));
             setSendError(result.error);
-            // Show error for 3 seconds
             setTimeout(() => setSendError(""), 3000);
+        } else {
+            // Realtime will handle the official record, but we can refresh silently
+            loadMessages(true);
         }
     };
 
@@ -195,7 +327,10 @@ export function LiveMessagesClient({ initialGroups }: { initialGroups: Group[] }
     const confirmDelete = async () => {
         if (!messageToDelete) return;
 
-        const result = await deleteGroupMessage(messageToDelete);
+        const result = isDirectChat
+            ? await deleteDirectMessage(messageToDelete)
+            : await deleteGroupMessage(messageToDelete);
+
         if (result.error) {
             console.error('Error deleting message:', result.error);
         } else {
@@ -226,6 +361,29 @@ export function LiveMessagesClient({ initialGroups }: { initialGroups: Group[] }
                     : g
             ));
         }
+    };
+
+    const handleClearDirectHistory = async () => {
+        if (!superAdmin || !isDirectChat) return;
+
+        openModal({
+            type: "delete",
+            title: "Clear AI History",
+            description: "Are you certain you wish to permanently clear all conversation history with the AI Assistant? This action cannot be undone.",
+            isDestructive: true,
+            confirmText: "Clear History",
+            onConfirm: async () => {
+                setIsClearingHistory(true);
+                const result = await clearDirectMessages(superAdmin.id);
+
+                if (result.success) {
+                    setMessages([]);
+                } else {
+                    alert("Failed to clear history: " + result.error);
+                }
+                setIsClearingHistory(false);
+            },
+        });
     };
 
     const formatTime = (timestamp: string) => {
@@ -267,16 +425,67 @@ export function LiveMessagesClient({ initialGroups }: { initialGroups: Group[] }
                         <input
                             type="text"
                             placeholder="Search groups..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 ring-emerald-500/10 focus:border-emerald-500 transition-all placeholder:text-slate-400 uppercase tracking-wide"
                         />
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
-                    {groups.map(group => (
+                <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2 custom-scrollbar">
+                    {/* Superadmin Direct Chat Entry */}
+                    {superAdmin && (
+                        <button
+                            onClick={() => {
+                                setIsDirectChat(true);
+                                setActiveGroupId(null);
+                            }}
+                            className={`w-full p-4 rounded-2xl flex items-start gap-4 transition-all duration-300 group text-left relative overflow-hidden ${isDirectChat
+                                ? "bg-white shadow-lg shadow-slate-100 ring-1 ring-slate-100"
+                                : "hover:bg-white hover:shadow-md hover:shadow-slate-100/50"
+                                }`}
+                        >
+                            {isDirectChat && (
+                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-500" />
+                            )}
+                            <div className="relative shrink-0">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center shadow-lg shadow-purple-100/50">
+                                    <Bot className="w-6 h-6 text-white" />
+                                </div>
+                                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-white">
+                                    <Sparkles className="w-3 h-3 text-white" />
+                                </div>
+                            </div>
+                            <div className="flex-1 min-w-0 pt-0.5">
+                                <div className="flex items-center justify-between mb-0.5">
+                                    <h3 className={`text-sm font-black uppercase tracking-tight truncate ${isDirectChat ? "text-slate-900" : "text-slate-700"
+                                        }`}>
+                                        AI Assistant
+                                    </h3>
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                        AI Active
+                                    </span>
+                                </div>
+                                <p className="text-xs font-medium text-slate-400 truncate">
+                                    Request tasks or group creation
+                                </p>
+                            </div>
+                        </button>
+                    )}
+
+                    <div className="py-2 flex items-center gap-2">
+                        <div className="h-px bg-slate-100 flex-1" />
+                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Groups</span>
+                        <div className="h-px bg-slate-100 flex-1" />
+                    </div>
+
+                    {filteredGroups.map(group => (
                         <button
                             key={group.id}
-                            onClick={() => setActiveGroupId(group.id)}
+                            onClick={() => {
+                                setIsDirectChat(false);
+                                setActiveGroupId(group.id);
+                            }}
                             className={`w-full p-4 rounded-2xl flex items-start gap-4 transition-all duration-300 group text-left relative overflow-hidden ${activeGroupId === group.id
                                 ? "bg-white shadow-lg shadow-slate-100 ring-1 ring-slate-100"
                                 : "hover:bg-white hover:shadow-md hover:shadow-slate-100/50"
@@ -311,7 +520,7 @@ export function LiveMessagesClient({ initialGroups }: { initialGroups: Group[] }
                             </div>
                         </button>
                     ))}
-                    {groups.length === 0 && (
+                    {filteredGroups.length === 0 && (
                         <div className="text-center py-8 text-slate-400">
                             <p className="text-xs">No groups found</p>
                         </div>
@@ -320,8 +529,187 @@ export function LiveMessagesClient({ initialGroups }: { initialGroups: Group[] }
             </div>
 
             {/* Chat Area */}
-            <div className={`flex-1 flex-col bg-white ${activeGroup ? 'flex' : 'hidden md:flex'}`}>
-                {activeGroup ? (
+            <div className={`flex-1 flex-col bg-white ${activeGroup || (isDirectChat && superAdmin) ? 'flex' : 'hidden md:flex'}`}>
+                {isDirectChat && superAdmin ? (
+                    <>
+                        {/* Direct Chat Header */}
+                        <div className="h-auto min-h-20 px-4 md:px-8 py-4 border-b border-slate-50 flex flex-col gap-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="relative">
+                                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center shadow-lg shadow-purple-100/50">
+                                            <Bot className="w-6 h-6 text-white" />
+                                        </div>
+                                        <div className="absolute -right-1 -top-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">
+                                            AI Assistant
+                                        </h3>
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-1 px-2 py-0.5 bg-purple-50 border border-purple-200 rounded-full">
+                                                <Sparkles className="w-2.5 h-2.5 text-purple-600" />
+                                                <span className="text-[9px] font-black text-purple-600 uppercase">AI Assistant Integrated</span>
+                                            </div>
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                                Direct Line
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={handleClearDirectHistory}
+                                        disabled={isClearingHistory || messages.length === 0}
+                                        className="flex items-center gap-2 h-9 px-4 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50 disabled:bg-slate-50 disabled:text-slate-300 transition-all text-[10px] font-black uppercase tracking-widest"
+                                        title="Clear all messages"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        Clear History
+                                    </button>
+                                    <button
+                                        onClick={() => setIsDirectChat(false)}
+                                        className="w-9 h-9 rounded-xl bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-red-500 flex items-center justify-center transition-all"
+                                        title="Close chat"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Messages */}
+                        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col-reverse gap-4">
+                            <div ref={messagesEndRef} />
+                            {loading ? (
+                                <div className="flex justify-center items-center h-full flex-col-reverse">
+                                    <div className="text-slate-400 text-sm">Loading security channel...</div>
+                                </div>
+                            ) : messages.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-4 flex-col-reverse">
+                                    <div className="text-center max-w-xs px-6">
+                                        <p className="text-sm font-bold mb-1 uppercase tracking-tight">Secure Channel Established</p>
+                                        <p className="text-xs text-slate-400">Ask the AI for help with group creation or directly message the Superadmin.</p>
+                                    </div>
+                                    <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center">
+                                        <Bot className="w-8 h-8 text-slate-300" />
+                                    </div>
+                                </div>
+                            ) : (
+                                [...messages].reverse().map((msg) => {
+                                    const isMe = msg.sender_id === user?.id;
+                                    const isAi = msg.is_ai_response || (isDirectChat && !isMe);
+                                    return (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            key={msg.id}
+                                            className={`flex gap-3 ${isMe ? "flex-row-reverse" : "flex-row"}`}
+                                        >
+                                            <div className="shrink-0">
+                                                {isAi ? (
+                                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white shadow-md ring-2 ring-white">
+                                                        <Sparkles className="w-5 h-5" />
+                                                    </div>
+                                                ) : msg.sender?.avatar_url ? (
+                                                    <Link href={`${profileBasePath}?userId=${msg.sender.id}`} className="block transition-transform hover:scale-105">
+                                                        <img
+                                                            src={msg.sender.avatar_url}
+                                                            alt={msg.sender.full_name}
+                                                            className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-md hover:ring-indigo-400 transition-all cursor-pointer"
+                                                        />
+                                                    </Link>
+                                                ) : (
+                                                    <Link href={`${profileBasePath}?userId=${msg.sender?.id}`} className="block transition-transform hover:scale-105">
+                                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-white hover:ring-indigo-400 transition-all">
+                                                            {getInitials(msg.sender?.full_name || 'U')}
+                                                        </div>
+                                                    </Link>
+                                                )}
+                                            </div>
+
+                                            <div className={`flex flex-col max-w-[70%] md:max-w-[60%] ${isMe ? "items-end" : "items-start"}`}>
+                                                <div className={`flex items-center gap-2 mb-1 px-1 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
+                                                    <span className="text-xs font-bold text-slate-700">
+                                                        {isAi ? (
+                                                            'AI Assistant'
+                                                        ) : (
+                                                            <Link href={`${profileBasePath}?userId=${msg.sender?.id}`} className="hover:text-indigo-600 hover:underline transition-colors">
+                                                                {isMe ? 'You' : msg.sender?.full_name || 'User'}
+                                                            </Link>
+                                                        )}
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-400">
+                                                        {formatTime(msg.created_at)}
+                                                    </span>
+                                                </div>
+
+                                                <div className="relative group/message">
+                                                    <div className={`px-4 py-2.5 rounded-2xl text-sm font-medium leading-relaxed shadow-sm ${isMe
+                                                        ? "bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-tr-md"
+                                                        : isAi
+                                                            ? "bg-gradient-to-br from-purple-500 to-indigo-600 text-white rounded-tl-md"
+                                                            : "bg-slate-100 text-slate-700 rounded-tl-md"
+                                                        }`}>
+                                                        {msg.content}
+                                                    </div>
+
+                                                    {/* Delete Button (only for own messages) */}
+                                                    {isMe && (
+                                                        <button
+                                                            onClick={() => handleDeleteMessage(msg.id)}
+                                                            className="absolute -top-2 -right-2 opacity-0 group-hover/message:opacity-100 transition-opacity w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-lg"
+                                                            title="Delete message"
+                                                        >
+                                                            <Trash2 className="w-3 h-3" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    );
+                                })
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        {/* Input Area */}
+                        <div className="p-4 bg-white border-t border-slate-50">
+                            {sendError && (
+                                <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2">
+                                    <Shield className="w-4 h-4 text-red-500 shrink-0" />
+                                    <p className="text-xs font-bold text-red-700">{sendError}</p>
+                                </div>
+                            )}
+
+                            <div className="relative">
+                                <form onSubmit={handleSendMessage} className="flex items-end gap-2 bg-slate-50 border border-slate-200 rounded-3xl p-2 pl-4 focus-within:ring-4 ring-indigo-500/10 focus-within:border-indigo-500/30 transition-all">
+                                    <textarea
+                                        value={messageInput}
+                                        onChange={(e) => setMessageInput(e.target.value)}
+                                        placeholder="Type your request to the AI Assistant..."
+                                        className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-slate-700 placeholder:text-slate-400 py-3 max-h-32 resize-none"
+                                        rows={1}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handleSendMessage(e);
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={!messageInput.trim()}
+                                        className="p-3 bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-2xl hover:shadow-lg disabled:opacity-50 disabled:hover:shadow-none transition-all shadow-md active:scale-95"
+                                    >
+                                        <Send className="w-4 h-4" />
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </>
+                ) : activeGroup ? (
                     <>
                         {/* Header */}
                         <div className="h-auto min-h-20 px-4 md:px-8 py-4 border-b border-slate-50 flex flex-col gap-3">
@@ -389,23 +777,24 @@ export function LiveMessagesClient({ initialGroups }: { initialGroups: Group[] }
                         </div>
 
                         {/* Messages */}
-                        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4">
+                        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col-reverse gap-4">
+                            <div ref={messagesEndRef} />
                             {loading ? (
-                                <div className="flex justify-center items-center h-full">
+                                <div className="flex justify-center items-center h-full flex-col-reverse">
                                     <div className="text-slate-400 text-sm">Loading messages...</div>
                                 </div>
                             ) : messages.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-4">
-                                    <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center">
-                                        <MessageCircle className="w-8 h-8 text-slate-300" />
-                                    </div>
+                                <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-4 flex-col-reverse">
                                     <div className="text-center">
                                         <p className="text-sm font-bold mb-1">No messages yet</p>
                                         <p className="text-xs text-slate-400">Start the conversation!</p>
                                     </div>
+                                    <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center">
+                                        <MessageCircle className="w-8 h-8 text-slate-300" />
+                                    </div>
                                 </div>
                             ) : (
-                                messages.map((msg) => {
+                                [...messages].reverse().map((msg) => {
                                     const isMe = msg.sender_id === user?.id;
                                     return (
                                         <motion.div
@@ -417,15 +806,19 @@ export function LiveMessagesClient({ initialGroups }: { initialGroups: Group[] }
                                             {/* Profile Picture */}
                                             <div className="shrink-0">
                                                 {msg.sender?.avatar_url ? (
-                                                    <img
-                                                        src={msg.sender.avatar_url}
-                                                        alt={msg.sender.full_name}
-                                                        className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-md"
-                                                    />
+                                                    <Link href={`${profileBasePath}?userId=${msg.sender.id}`} className="block transition-transform hover:scale-105">
+                                                        <img
+                                                            src={msg.sender.avatar_url}
+                                                            alt={msg.sender.full_name}
+                                                            className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-md hover:ring-emerald-400 transition-all"
+                                                        />
+                                                    </Link>
                                                 ) : (
-                                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-white">
-                                                        {getInitials(msg.sender?.full_name || 'U')}
-                                                    </div>
+                                                    <Link href={`${profileBasePath}?userId=${msg.sender?.id}`} className="block transition-transform hover:scale-105">
+                                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-white hover:ring-emerald-400 transition-all">
+                                                            {getInitials(msg.sender?.full_name || 'U')}
+                                                        </div>
+                                                    </Link>
                                                 )}
                                             </div>
 
@@ -434,7 +827,9 @@ export function LiveMessagesClient({ initialGroups }: { initialGroups: Group[] }
                                                 {/* Name and Time */}
                                                 <div className={`flex items-center gap-2 mb-1 px-1 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
                                                     <span className="text-xs font-bold text-slate-700">
-                                                        {isMe ? 'You' : msg.sender?.full_name || 'Unknown'}
+                                                        <Link href={`${profileBasePath}?userId=${msg.sender?.id}`} className="hover:text-emerald-600 hover:underline transition-colors">
+                                                            {isMe ? 'You' : msg.sender?.full_name || 'Unknown'}
+                                                        </Link>
                                                     </span>
                                                     <span className="text-[10px] text-slate-400">
                                                         {formatTime(msg.created_at)}

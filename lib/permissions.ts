@@ -98,13 +98,20 @@ export const getGlobalRole = cache(async (userId: string): Promise<GlobalRole> =
 export async function syncUserToSupabase(userId: string, userEmail: string, userData?: { name?: string, imageUrl?: string }) {
     const supabase = createAdminClient();
 
+    // First check if user already has data to avoid overwriting custom profiles
+    const { data: existingUser } = await supabase
+        .from('users')
+        .select('full_name, avatar_url')
+        .eq('id', userId)
+        .single();
+
     const { error } = await supabase
         .from('users')
         .upsert({
             id: userId,
             email: userEmail,
-            full_name: userData?.name || null,
-            avatar_url: userData?.imageUrl || null,
+            full_name: existingUser?.full_name || userData?.name || null,
+            avatar_url: existingUser?.avatar_url || userData?.imageUrl || null,
             updated_at: new Date().toISOString()
         }, { onConflict: 'id' });
 

@@ -87,8 +87,8 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
                                     onClick={handleConfirm}
                                     disabled={isLoading}
                                     className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2 ${modalConfig.isDestructive
-                                            ? "bg-red-600 hover:bg-red-700"
-                                            : "bg-emerald-600 hover:bg-emerald-700"
+                                        ? "bg-red-600 hover:bg-red-700"
+                                        : "bg-emerald-600 hover:bg-emerald-700"
                                         }`}
                                 >
                                     {isLoading && (
@@ -111,7 +111,13 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
 export function useModal() {
     const context = useContext(ModalContext);
     if (!context) {
-        throw new Error("useModal must be used within a ModalProvider");
+        // Prevent SSR crash if context is missing
+        console.warn("useModal must be used within a ModalProvider");
+        return {
+            openModal: () => console.warn("ModalProvider not found"),
+            closeModal: () => { },
+            isOpen: false
+        };
     }
     return context;
 }

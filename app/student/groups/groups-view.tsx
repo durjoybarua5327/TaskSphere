@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { GroupCard } from "./group-card";
 import { Users, Search } from "lucide-react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 
 interface GroupsViewProps {
@@ -10,9 +11,10 @@ interface GroupsViewProps {
     myGroupIds: string[];
     pendingGroupIds?: string[];
     userId: string;
+    isProfileComplete?: boolean;
 }
 
-export function GroupsView({ groups, myGroupIds, pendingGroupIds = [], userId }: GroupsViewProps) {
+export function GroupsView({ groups, myGroupIds, pendingGroupIds = [], userId, isProfileComplete = true }: GroupsViewProps) {
     const [viewMode, setViewMode] = useState<"all" | "my">("all");
     const [searchQuery, setSearchQuery] = useState("");
 
@@ -28,6 +30,25 @@ export function GroupsView({ groups, myGroupIds, pendingGroupIds = [], userId }:
 
     return (
         <div className="space-y-6">
+            {!isProfileComplete && (
+                <div className="bg-amber-50 border border-amber-200 rounded-[2rem] p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-600 shrink-0">
+                            <Users className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <p className="text-slate-900 font-bold tracking-tight">Profile upgrade required</p>
+                            <p className="text-slate-500 text-xs font-medium">You need to complete your profile details before you can join or explore collaborator groups.</p>
+                        </div>
+                    </div>
+                    <Link href="/student/profile">
+                        <button className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-amber-200">
+                            Complete Profile
+                        </button>
+                    </Link>
+                </div>
+            )}
+
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                     <span className="w-1 h-8 bg-indigo-500 rounded-full"></span>
@@ -91,14 +112,11 @@ export function GroupsView({ groups, myGroupIds, pendingGroupIds = [], userId }:
                     {filteredGroups.map((group) => (
                         <GroupCard
                             key={group.id}
-                            group={{
-                                ...group,
-                                university_name: group.institute_name,
-                                group_purpose: group.description
-                            }}
+                            group={group}
                             isMember={myGroupIds.includes(group.id)}
                             isPending={pendingGroupIds.includes(group.id)}
                             userId={userId}
+                            isProfileComplete={isProfileComplete}
                         />
                     ))}
                 </div>

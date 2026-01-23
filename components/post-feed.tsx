@@ -9,8 +9,10 @@ import {
     Trash2,
     X,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    UserCircle
 } from "lucide-react";
+import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useModal } from "@/components/providers/modal-provider";
@@ -46,12 +48,13 @@ type Post = {
         email: string;
         avatar_url: string | null;
         is_super_admin?: boolean;
+        role?: string;
     } | null;
     likes: { user_id: string }[];
     comments: { count: number }[];
 };
 
-export function PostFeed({ posts, currentUserId, isSuperAdmin = false }: { posts: Post[]; currentUserId: string; isSuperAdmin?: boolean }) {
+export function PostFeed({ posts, currentUserId, isSuperAdmin = false, profileBasePath = "/student/profile" }: { posts: Post[]; currentUserId: string; isSuperAdmin?: boolean; profileBasePath?: string }) {
     const [selectedPost, setSelectedPost] = useState<Post | null>(null);
 
     // Lock body scroll when modal is open
@@ -116,6 +119,7 @@ export function PostFeed({ posts, currentUserId, isSuperAdmin = false }: { posts
                             post={post}
                             currentUserId={currentUserId}
                             isSuperAdmin={isSuperAdmin}
+                            profileBasePath={profileBasePath}
                             onClick={() => setSelectedPost(post)}
                         />
                     </motion.div>
@@ -128,6 +132,7 @@ export function PostFeed({ posts, currentUserId, isSuperAdmin = false }: { posts
                         post={selectedPost}
                         currentUserId={currentUserId}
                         isSuperAdmin={isSuperAdmin}
+                        profileBasePath={profileBasePath}
                         onClose={() => setSelectedPost(null)}
                     />
                 )}
@@ -136,7 +141,7 @@ export function PostFeed({ posts, currentUserId, isSuperAdmin = false }: { posts
     );
 }
 
-function PostCard({ post, currentUserId, isSuperAdmin, onClick }: { post: Post; currentUserId: string; isSuperAdmin: boolean; onClick: () => void }) {
+function PostCard({ post, currentUserId, isSuperAdmin, onClick, profileBasePath }: { post: Post; currentUserId: string; isSuperAdmin: boolean; onClick: () => void; profileBasePath: string }) {
     const [isLiked, setIsLiked] = useState(post.likes?.some(l => l.user_id === currentUserId) || false);
     const [likesCount, setLikesCount] = useState(post.likes?.length || 0);
     const [commentsCount, setCommentsCount] = useState(post.comments?.[0]?.count || 0);
@@ -168,7 +173,7 @@ function PostCard({ post, currentUserId, isSuperAdmin, onClick }: { post: Post; 
                     table: 'comments',
                     filter: `post_id=eq.${post.id}`
                 },
-                async (payload) => {
+                async (payload: any) => {
                     // Fetch updated count
                     const { count } = await supabase
                         .from('comments')
@@ -235,7 +240,12 @@ function PostCard({ post, currentUserId, isSuperAdmin, onClick }: { post: Post; 
 
                 {/* Admin/Owner Actions */}
                 {canEdit && (
-                    <div className="absolute top-4 right-4 z-20 flex gap-2 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 ease-out">
+                    <div
+                        className="absolute top-4 right-4 z-50 flex gap-2 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 ease-out"
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onMouseUp={(e) => e.stopPropagation()}
+                    >
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -243,39 +253,56 @@ function PostCard({ post, currentUserId, isSuperAdmin, onClick }: { post: Post; 
                             }}
                             className="p-2.5 bg-white/95 backdrop-blur-xl shadow-xl border border-slate-100 text-slate-600 hover:text-green-600 hover:bg-green-50 rounded-2xl transition-all duration-300 hover:scale-110 active:scale-95"
                         >
-                            <Pencil className="w-4 h-4" />
+                            <Pencil className="w-4 h-4 pointer-events-none" />
                         </button>
                         <button
                             onClick={handleDelete}
                             className="p-2.5 bg-white/95 backdrop-blur-xl shadow-xl border border-slate-100 text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-2xl transition-all duration-300 hover:scale-110 active:scale-95"
                         >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4 pointer-events-none" />
                         </button>
                     </div>
                 )}
 
 
                 {/* Author Info */}
-                <div className="flex items-center gap-3 mb-5 shrink-0 relative z-10">
-                    <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center border border-slate-200 shadow-sm">
+                <div className="flex items-center gap-3 mb-5 shrink-0 relative z-20">
+                    <Link
+                        href={`${profileBasePath}?userId=${post.author_id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-9 h-9 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center border border-slate-200 shadow-sm hover:border-green-300 transition-all overflow-hidden"
+                    >
                         {author?.avatar_url ? (
-                            <img src={author.avatar_url} alt={authorName} className="w-full h-full rounded-2xl object-cover" />
+                            <img src={author.avatar_url} alt={authorName} className="w-full h-full object-cover" />
                         ) : (
                             <User className="w-4 h-4 text-slate-400" />
                         )}
-                    </div>
+                    </Link>
                     <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                            <p className="text-sm font-bold text-slate-900 leading-none">{authorName}</p>
+                        <Link
+                            href={`${profileBasePath}?userId=${post.author_id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="block text-sm font-bold text-slate-900 leading-none hover:text-green-600 transition-colors mb-1.5"
+                        >
+                            {authorName}
+                        </Link>
+                        <div className="flex items-center gap-2">
                             {/* Role Badge - Show exact role */}
-                            <span className="px-1.5 py-0.5 bg-green-50 border border-green-100 rounded-md text-[10px] font-bold text-green-700">
-                                {author?.is_super_admin ? 'Super Admin' : 'Student'}
+                            <span className={`px-1.5 py-0.5 border rounded-md text-[10px] font-bold ${author?.is_super_admin
+                                ? 'bg-green-50 border-green-100 text-green-700'
+                                : author?.role === 'top_admin'
+                                    ? 'bg-orange-50 border-orange-100 text-orange-700'
+                                    : author?.role === 'admin'
+                                        ? 'bg-purple-50 border-purple-100 text-purple-700'
+                                        : 'bg-slate-50 border-slate-100 text-slate-500'
+                                }`}>
+                                {author?.is_super_admin ? 'Global Admin' : (author?.role || 'Student').replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                             </span>
+                            <p className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+                                <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+                                {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
+                            </p>
                         </div>
-                        <p className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
-                            <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                            {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
-                        </p>
                     </div>
                 </div>
 
@@ -310,9 +337,9 @@ function PostCard({ post, currentUserId, isSuperAdmin, onClick }: { post: Post; 
 
                     <div className="mt-auto">
                         {post.tags && post.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mb-3">
-                                {post.tags.slice(0, 2).map((tag, idx) => (
-                                    <span key={idx} className="px-2.5 py-1 bg-green-50 text-green-700 rounded-xl text-xs font-bold border border-green-100">
+                            <div className="flex flex-nowrap items-center gap-1.5 mb-3 overflow-x-auto scrollbar-hide">
+                                {post.tags.map((tag, idx) => (
+                                    <span key={idx} className="px-2.5 py-1 bg-green-50 text-green-700 rounded-xl text-[10px] font-bold border border-green-100 whitespace-nowrap shrink-0">
                                         #{tag}
                                     </span>
                                 ))}
@@ -359,7 +386,7 @@ function PostCard({ post, currentUserId, isSuperAdmin, onClick }: { post: Post; 
     );
 }
 
-function PostModal({ post, currentUserId, isSuperAdmin, onClose }: { post: Post; currentUserId: string; isSuperAdmin: boolean; onClose: () => void }) {
+function PostModal({ post, currentUserId, isSuperAdmin, onClose, profileBasePath }: { post: Post; currentUserId: string; isSuperAdmin: boolean; onClose: () => void; profileBasePath: string }) {
     const [comment, setComment] = useState("");
     const [comments, setComments] = useState<Comment[]>([]);
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -497,25 +524,39 @@ function PostModal({ post, currentUserId, isSuperAdmin, onClose }: { post: Post;
                     <div className="space-y-6">
                         {/* Header with Role */}
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100">
+                            <Link
+                                href={`${profileBasePath}?userId=${post.author_id}`}
+                                className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100 hover:border-green-200 transition-all overflow-hidden"
+                            >
                                 {author?.avatar_url ? (
-                                    <img src={author.avatar_url} alt={authorName} className="w-full h-full rounded-xl object-cover" />
+                                    <img src={author.avatar_url} alt={authorName} className="w-full h-full object-cover" />
                                 ) : (
                                     <User className="w-5 h-5 text-slate-300" />
                                 )}
-                            </div>
+                            </Link>
                             <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <h4 className="text-base font-bold text-slate-900 leading-none">{authorName}</h4>
-                                    {/* Role Badge beside name - Show exact role */}
-                                    <span className="px-2 py-0.5 bg-green-50 border border-green-100 rounded-lg text-xs font-bold text-green-700">
-                                        {author?.is_super_admin ? 'Super Admin' : 'Student'}
+                                <Link
+                                    href={`${profileBasePath}?userId=${post.author_id}`}
+                                    className="block text-base font-bold text-slate-900 leading-none hover:text-green-600 transition-colors mb-1.5"
+                                >
+                                    {authorName}
+                                </Link>
+                                <div className="flex items-center gap-2">
+                                    <span className={`px-2 py-0.5 border rounded-lg text-xs font-bold ${author?.is_super_admin
+                                        ? 'bg-green-50 border-green-100 text-green-700'
+                                        : author?.role === 'top_admin'
+                                            ? 'bg-orange-50 border-orange-100 text-orange-700'
+                                            : author?.role === 'admin'
+                                                ? 'bg-purple-50 border-purple-100 text-purple-700'
+                                                : 'bg-slate-50 border-slate-100 text-slate-500'
+                                        }`}>
+                                        {author?.is_super_admin ? 'Global Admin' : (author?.role || 'Student').replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                                     </span>
+                                    <p className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+                                        <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                                        {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
+                                    </p>
                                 </div>
-                                <p className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
-                                    <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                                    {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
-                                </p>
                             </div>
                         </div>
 
@@ -530,6 +571,15 @@ function PostModal({ post, currentUserId, isSuperAdmin, onClose }: { post: Post;
                                 className="text-sm text-slate-600 prose prose-slate max-w-none leading-relaxed"
                                 dangerouslySetInnerHTML={{ __html: post.content }}
                             />
+                            {post.tags && post.tags.length > 0 && (
+                                <div className="flex flex-nowrap items-center gap-1.5 mt-4 overflow-x-auto scrollbar-hide">
+                                    {post.tags.map((tag, idx) => (
+                                        <span key={idx} className="px-2.5 py-1 bg-green-50 text-green-700 rounded-xl text-[10px] font-bold border border-green-100 whitespace-nowrap shrink-0">
+                                            #{tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {/* Images Carousel - Smaller */}
@@ -650,6 +700,7 @@ function PostModal({ post, currentUserId, isSuperAdmin, onClose }: { post: Post;
                                             comment={c}
                                             currentUserId={currentUserId}
                                             isSuperAdmin={isSuperAdmin}
+                                            profileBasePath={profileBasePath}
                                             refreshData={() => {
                                                 getComments(post.id).then((data) => setComments(data as Comment[]));
                                                 router.refresh();
@@ -676,12 +727,14 @@ function CommentItem({
     comment,
     currentUserId,
     isSuperAdmin,
-    refreshData
+    refreshData,
+    profileBasePath
 }: {
     comment: Comment;
     currentUserId: string;
     isSuperAdmin: boolean;
     refreshData: () => void;
+    profileBasePath: string;
 }) {
     const [isEditing, setIsEditing] = useState(false);
     const [editContent, setEditContent] = useState(comment.content);
@@ -722,30 +775,40 @@ function CommentItem({
 
     return (
         <div className="flex gap-4 group">
-            <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100 shrink-0">
+            <Link
+                href={`${profileBasePath}?userId=${comment.user_id}`}
+                className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100 shrink-0 hover:border-green-200 transition-all overflow-hidden"
+            >
                 {comment.user?.avatar_url ? (
-                    <img src={comment.user.avatar_url} alt="" className="w-full h-full rounded-xl object-cover" />
+                    <img src={comment.user.avatar_url} alt="" className="w-full h-full object-cover" />
                 ) : (
                     <User className="w-4 h-4 text-slate-300" />
                 )}
-            </div>
+            </Link>
             <div className="flex-1 space-y-1">
                 <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-900 uppercase tracking-tight">
+                    <Link
+                        href={`${profileBasePath}?userId=${comment.user_id}`}
+                        className="text-xs font-black text-slate-900 uppercase tracking-tight hover:text-green-600 transition-colors"
+                    >
                         {comment.user?.full_name || 'Anonymous'}
-                    </span>
+                    </Link>
                     <div className="flex items-center gap-2">
                         <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
                             {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
                         </span>
-                        {canEdit && !isEditing && (
+                        {!isEditing && (canEdit || canDelete) && (
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => setIsEditing(true)} className="p-1 hover:text-[#00897B] text-slate-400">
-                                    <Pencil className="w-3 h-3" />
-                                </button>
-                                <button onClick={handleDelete} className="p-1 hover:text-red-500 text-slate-400">
-                                    <Trash2 className="w-3 h-3" />
-                                </button>
+                                {canEdit && (
+                                    <button onClick={() => setIsEditing(true)} className="p-1 hover:text-[#00897B] text-slate-400 transition-colors">
+                                        <Pencil className="w-3 h-3" />
+                                    </button>
+                                )}
+                                {canDelete && (
+                                    <button onClick={handleDelete} className="p-1 hover:text-red-500 text-slate-400 transition-colors">
+                                        <Trash2 className="w-3 h-3" />
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>
@@ -781,28 +844,6 @@ function CommentItem({
                             {comment.content}
                         </p>
 
-                        {(canEdit || canDelete) && (
-                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                {canEdit && (
-                                    <button
-                                        onClick={() => setIsEditing(true)}
-                                        className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-green-600 transition-colors"
-                                        title="Edit comment"
-                                    >
-                                        <Pencil className="w-3.5 h-3.5" />
-                                    </button>
-                                )}
-                                {canDelete && (
-                                    <button
-                                        onClick={handleDelete}
-                                        className="p-1 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-600 transition-colors"
-                                        title="Delete comment"
-                                    >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                )}
-                            </div>
-                        )}
                     </>
                 )}
             </div>

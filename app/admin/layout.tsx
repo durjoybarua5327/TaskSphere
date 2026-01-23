@@ -1,6 +1,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getGlobalRole, syncUserToSupabase } from "@/lib/permissions";
 import { redirect } from "next/navigation";
+import { createAdminClient } from "@/lib/supabase-admin";
 import { AdminLayoutClient } from "./layout-client";
 
 export default async function AdminLayout({
@@ -29,7 +30,7 @@ export default async function AdminLayout({
         redirect('/student');
     }
 
-    // Sync user data to Supabase
+    // Sync user data to Supabase (this now safely preserves custom profiles)
     const email = user.emailAddresses[0]?.emailAddress;
     if (email) {
         await syncUserToSupabase(userId, email, {
@@ -38,12 +39,21 @@ export default async function AdminLayout({
         });
     }
 
+    // Fetch the latest profile data from Supabase
+    const supabase = createAdminClient();
+    const { data: profile } = await supabase
+        .from("users")
+        .select("full_name, avatar_url")
+        .eq("id", userId)
+        .single();
+
     return (
         <AdminLayoutClient
+            role={role}
             userId={userId}
             user={{
-                imageUrl: user.imageUrl,
-                fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+                imageUrl: profile?.avatar_url || user.imageUrl,
+                fullName: profile?.full_name || `${user.firstName || ''} ${user.lastName || ''}`.trim(),
                 email: user.emailAddresses[0]?.emailAddress
             }}
         >

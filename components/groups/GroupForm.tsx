@@ -5,6 +5,7 @@ import { PlusCircle, Loader2, Users, Building2, GraduationCap } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ImageCropper } from "@/components/ui/image-cropper";
 
 export interface GroupFormData {
     name: string;
@@ -13,6 +14,7 @@ export interface GroupFormData {
     groupId?: string;
     purpose: string;
     topAdminEmail?: string;
+    avatarUrl?: string;
 }
 
 interface GroupFormProps {
@@ -36,8 +38,20 @@ export function GroupForm({
     const [groupId, setGroupId] = useState(initialData?.groupId || "");
     const [purpose, setPurpose] = useState(initialData?.purpose || "");
     const [topAdminEmail, setTopAdminEmail] = useState(initialData?.topAdminEmail || "");
+    const [avatarUrl, setAvatarUrl] = useState(initialData?.avatarUrl || "");
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Image Upload State
+    const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+    const [isCropperOpen, setIsCropperOpen] = useState(false);
+
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            setSelectedImageFile(e.target.files[0]);
+            setIsCropperOpen(true);
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -57,6 +71,7 @@ export function GroupForm({
             groupId: groupId || undefined,
             purpose,
             topAdminEmail: topAdminEmail || undefined,
+            avatarUrl: avatarUrl || undefined,
         });
 
         if (result.error) {
@@ -151,24 +166,26 @@ export function GroupForm({
             </div>
 
             {/* Top Admin Email - Only for Super Admin */}
-            {showTopAdminEmail && (
-                <div className="space-y-2">
-                    <Label htmlFor="topAdminEmail" className="text-slate-700 font-semibold">
-                        Top Admin Email (Optional)
-                    </Label>
-                    <div className="relative">
-                        <Input
-                            id="topAdminEmail"
-                            type="email"
-                            value={topAdminEmail}
-                            onChange={(e) => setTopAdminEmail(e.target.value)}
-                            placeholder="admin@example.com"
-                            className="bg-white border-slate-200 pl-10"
-                        />
-                        <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            {
+                showTopAdminEmail && (
+                    <div className="space-y-2">
+                        <Label htmlFor="topAdminEmail" className="text-slate-700 font-semibold">
+                            Top Admin Email (Optional)
+                        </Label>
+                        <div className="relative">
+                            <Input
+                                id="topAdminEmail"
+                                type="email"
+                                value={topAdminEmail}
+                                onChange={(e) => setTopAdminEmail(e.target.value)}
+                                placeholder="admin@example.com"
+                                className="bg-white border-slate-200 pl-10"
+                            />
+                            <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                 <Button
@@ -198,6 +215,21 @@ export function GroupForm({
                     )}
                 </Button>
             </div>
-        </form>
+            {
+                selectedImageFile && (
+                    <ImageCropper
+                        isOpen={isCropperOpen}
+                        imageFile={selectedImageFile}
+                        onClose={() => {
+                            setIsCropperOpen(false);
+                            setSelectedImageFile(null);
+                        }}
+                        onCropComplete={(croppedImage) => {
+                            setAvatarUrl(croppedImage);
+                        }}
+                    />
+                )
+            }
+        </form >
     );
 }

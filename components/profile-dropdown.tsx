@@ -1,6 +1,6 @@
 "use client";
 
-import { useClerk } from "@clerk/nextjs";
+import { useAuth } from "@clerk/nextjs";
 import { LogOut, User, ChevronDown } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -15,7 +15,7 @@ interface ProfileDropdownProps {
 }
 
 export function ProfileDropdown({ role, user }: ProfileDropdownProps) {
-    const { signOut } = useClerk();
+    const { signOut } = useAuth();
     const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);

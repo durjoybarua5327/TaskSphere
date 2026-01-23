@@ -3,6 +3,8 @@
 import { createAdminClient } from "@/lib/supabase-admin";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import { createNotification } from "@/app/student/actions";
+import { uploadBase64Image } from "@/lib/upload-image";
 
 // Helper to check if user has admin rights for a group
 export async function verifyGroupAdminAccess(userId: string, groupId: string) {
@@ -102,6 +104,7 @@ export async function updateGroupInfo(groupId: string, data: {
     description: string;
     instituteName: string;
     department: string;
+    avatarUrl?: string;
 }) {
     const { userId } = await auth();
     if (!userId) return { error: "Not authenticated", success: false };
@@ -112,6 +115,19 @@ export async function updateGroupInfo(groupId: string, data: {
     }
 
     const supabase = createAdminClient();
+
+    // Handle group avatar upload if it's a base64 data URL
+    let avatarUrl = undefined;
+    if (data.avatarUrl && data.avatarUrl.startsWith("data:image/")) {
+        const { uploadBase64Image } = await import("@/lib/upload-image");
+        const uploadResult = await uploadBase64Image(data.avatarUrl, userId, `group-admin-update-${Date.now()}`);
+        if (uploadResult.url) {
+            avatarUrl = uploadResult.url;
+        } else {
+            console.error("Failed to upload group avatar:", uploadResult.error);
+        }
+    }
+
     const { error } = await supabase
         .from("groups")
         .update({
@@ -119,6 +135,7 @@ export async function updateGroupInfo(groupId: string, data: {
             description: data.description,
             institute_name: data.instituteName,
             department: data.department,
+            avatar_url: avatarUrl || data.avatarUrl,
             updated_at: new Date().toISOString()
         })
         .eq("id", groupId);
@@ -453,7 +470,16 @@ export async function createTask(groupId: string, data: {
     if (!authorized) return { error: "Permission denied", success: false };
 
     const supabase = createAdminClient();
-    const { error } = await supabase
+
+    // We need to fetch the inserted task ID or use a second query. 
+    // Actually, let's fetch members and notify them. We can just say "New Task" without linking to specific task ID if we don't have it, or fetching latest task.
+
+    // Better strategy: Select returned ID.
+    // Since the original code didn't use .select(), we might not have ID.
+    // Let's modify the insert to return data.
+
+    // Re-implementing insert with select to get ID
+    const { data: newTask, error: createError } = await supabase
         .from("tasks")
         .insert({
             group_id: groupId,
@@ -464,9 +490,34 @@ export async function createTask(groupId: string, data: {
             max_score: data.max_score || 10,
             attachments: data.attachments || [],
             submissions_visibility: data.submissions_visibility || 'private'
-        });
+        })
+        .select()
+        .single();
 
-    if (error) return { error: error.message, success: false };
+    if (createError) return { error: createError.message, success: false };
+
+    // Notify all group members
+    const { data: members } = await supabase
+        .from("group_members")
+        .select("user_id")
+        .eq("group_id", groupId);
+
+    if (members) {
+        // Fetch group name for better message
+        const { data: group } = await supabase.from("groups").select("name").eq("id", groupId).single();
+        const groupName = group?.name || "group";
+
+        await Promise.all(members.map(member =>
+            createNotification(
+                member.user_id,
+                "task_created",
+                userId,
+                undefined, // No post ID
+                `added a new task in ${groupName}: "${data.title}"`,
+                { task_id: newTask.id, group_id: groupId }
+            )
+        ));
+    }
 
     revalidatePath(`/admin/groups/${groupId}`);
     return { success: true };
@@ -615,7 +666,82 @@ export async function submitTask(taskId: string, data: {
 
     if (error) return { error: error.message, success: false };
 
+    // Notify Group Admins
+    // 1. Get group top admin and admins
+    const { data: group } = await supabase
+        .from("groups")
+        .select("id, name, top_admin_id")
+        .eq("id", task.group_id)
+        .single();
+
+    // Get other admins
+    const { data: admins } = await supabase
+        .from("group_members")
+        .select("user_id")
+        .eq("group_id", task.group_id)
+        .in("role", ["admin", "top_admin"]);
+
+    const adminIds = new Set<string>();
+    if (group?.top_admin_id) adminIds.add(group.top_admin_id);
+    admins?.forEach(a => adminIds.add(a.user_id));
+
+    // Get task title for message
+    const { data: taskDetails } = await supabase.from("tasks").select("title").eq("id", taskId).single();
+
+    const submissionId = existing?.id || (await supabase.from("submissions").select("id").eq("task_id", taskId).eq("student_id", userId).single()).data?.id;
+
+    await Promise.all(Array.from(adminIds).map(adminId =>
+        createNotification(
+            adminId,
+            "task_submitted",
+            userId,
+            undefined,
+            `submitted a task: "${taskDetails?.title || 'Unknown Task'}" in ${group?.name}`,
+            { task_id: taskId, submission_id: submissionId }
+        )
+    ));
+
     revalidatePath(`/admin/groups/${task.group_id}`);
+    return { success: true };
+}
+
+export async function deleteSubmission(submissionId: string) {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", success: false };
+
+    const supabase = createAdminClient();
+
+    const { data: submission } = await supabase
+        .from("submissions")
+        .select(`
+            id,
+            student_id,
+            task_id,
+            task: task_id(
+                group_id
+            )
+        `)
+        .eq("id", submissionId)
+        .single();
+
+    if (!submission) return { error: "Submission not found", success: false };
+
+    const isOwner = submission.student_id === userId;
+    const { authorized } = await verifyGroupAdminAccess(userId, (submission.task as any).group_id);
+    const isGroupAdmin = authorized;
+
+    if (!isOwner && !isGroupAdmin) {
+        return { error: "Permission denied", success: false };
+    }
+
+    const { error } = await supabase
+        .from("submissions")
+        .delete()
+        .eq("id", submissionId);
+
+    if (error) return { error: error.message, success: false };
+
+    revalidatePath(`/student/tasks/${submission.task_id}`);
     return { success: true };
 }
 
@@ -714,6 +840,23 @@ export async function scoreSubmission(submissionId: string, scoreValue: number, 
     }
 
     if (error) return { error: error.message, success: false };
+
+    // Notify Student
+    const { data: sub } = await supabase.from("submissions").select("student_id, task_id").eq("id", submissionId).single();
+    if (sub) {
+        const { data: task } = await supabase.from("tasks").select("title, group:groups(name)").eq("id", sub.task_id).single();
+        const taskTitle = task?.title || "Task";
+        const groupName = (task?.group as any)?.name || "Group";
+
+        await createNotification(
+            sub.student_id,
+            "grade_received",
+            userId,
+            undefined,
+            `graded your submission for "${taskTitle}" in ${groupName}. Score: ${scoreValue}`,
+            { task_id: sub.task_id, submission_id: submissionId }
+        );
+    }
 
     return { success: true };
 }
@@ -840,9 +983,25 @@ export async function updateProfile(data: {
 
     const updates: any = {};
     if (data.fullName !== undefined) updates.full_name = data.fullName;
-    if (data.avatarUrl !== undefined) updates.avatar_url = data.avatarUrl;
     if (data.instituteName !== undefined) updates.institute_name = data.instituteName;
     if (data.portfolioUrl !== undefined) updates.portfolio_url = data.portfolioUrl;
+
+    // Handle avatar upload if it's a base64 data URL
+    if (data.avatarUrl !== undefined && data.avatarUrl !== null) {
+        if (data.avatarUrl.startsWith("data:image/")) {
+            // It's a base64 image, upload to storage
+            const uploadResult = await uploadBase64Image(data.avatarUrl, userId);
+
+            if (uploadResult.error || !uploadResult.url) {
+                return { error: `Failed to upload avatar: ${uploadResult.error || 'Unknown upload error'}` };
+            }
+
+            updates.avatar_url = uploadResult.url;
+        } else {
+            // It's already a URL
+            updates.avatar_url = data.avatarUrl;
+        }
+    }
 
     const { error } = await supabase
         .from("users")
@@ -1001,4 +1160,62 @@ export async function getPublicSubmissions(taskId: string) {
 
     if (error) return { error: error.message, submissions: [] };
     return { submissions: data || [] };
+}
+
+export async function getTask(taskId: string) {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", task: null };
+
+    const supabase = createAdminClient();
+
+    const { data: task, error } = await supabase
+        .from("tasks")
+        .select(`
+            *,
+            group: group_id(id, name, top_admin_id, institute_name),
+            creator: creator_id(full_name, avatar_url),
+            submissions: submissions(count)
+        `)
+        .eq("id", taskId)
+        .single();
+
+    if (error || !task) return { error: error?.message || "Task not found", task: null };
+
+    // Verify access
+    const { authorized } = await verifyGroupAdminAccess(userId, task.group.id);
+    if (!authorized) return { error: "Permission denied", task: null };
+
+    return { task };
+}
+
+export async function getTaskForStudent(taskId: string) {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", task: null };
+
+    const supabase = createAdminClient();
+
+    const { data: task, error } = await supabase
+        .from("tasks")
+        .select(`
+            *,
+            group: group_id(id, name, top_admin_id, institute_name, department),
+            creator: creator_id(full_name, avatar_url),
+            submissions: submissions(count)
+        `)
+        .eq("id", taskId)
+        .single();
+
+    if (error || !task) return { error: error?.message || "Task not found", task: null };
+
+    // Verify user is member of the group
+    const { data: membership } = await supabase
+        .from("group_members")
+        .select("id")
+        .eq("group_id", task.group.id)
+        .eq("user_id", userId)
+        .single();
+
+    if (!membership) return { error: "Permission denied", task: null };
+
+    return { task };
 }

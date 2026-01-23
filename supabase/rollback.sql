@@ -7,6 +7,8 @@
 -- 1. Remove Storage Policies (from Migration)
 DROP POLICY IF EXISTS "Authenticated users can upload task attachments" ON storage.objects;
 DROP POLICY IF EXISTS "Public can view task attachments" ON storage.objects;
+DROP POLICY IF EXISTS "Users can update their own attachments" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete their own attachments" ON storage.objects;
 DROP POLICY IF EXISTS "Group members can see public submissions" ON submissions;
 
 -- Remove bucket (Attempt to remove if empty, might fail if has objects, but good to try)
@@ -47,6 +49,23 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+DO $$ 
+BEGIN
+    ALTER PUBLICATION supabase_realtime DROP TABLE messages;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- Reset replica identity
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'messages' AND schemaname = 'public') THEN
+        ALTER TABLE messages REPLICA IDENTITY DEFAULT;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'group_messages' AND schemaname = 'public') THEN
+        ALTER TABLE group_messages REPLICA IDENTITY DEFAULT;
+    END IF;
+END $$;
+
 -- 3. Drop triggers BEFORE dropping tables
 -- (Dropping a table drops its triggers, so we use DO blocks to avoid "relation does not exist" errors)
 DO $$ 
@@ -70,6 +89,18 @@ END $$;
 DO $$ 
 BEGIN
     DROP TRIGGER IF EXISTS update_posts_updated_at ON posts;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ 
+BEGIN
+    DROP TRIGGER IF EXISTS update_tasks_updated_at ON tasks;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ 
+BEGIN
+    DROP TRIGGER IF EXISTS update_submissions_updated_at ON submissions;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

@@ -13,6 +13,8 @@ interface ModalProps {
     children: React.ReactNode;
     className?: string;
     preventOutsideClick?: boolean;
+    hideHeader?: boolean;
+    contentClassName?: string;
 }
 
 export function Modal({
@@ -23,6 +25,8 @@ export function Modal({
     children,
     className,
     preventOutsideClick = false,
+    hideHeader = false,
+    contentClassName,
 }: ModalProps) {
     React.useEffect(() => {
         const handleEscape = (e: KeyboardEvent) => {
@@ -63,27 +67,29 @@ export function Modal({
                     className
                 )}
             >
-                <div className="flex items-center justify-between mb-4">
-                    <div className="space-y-1">
-                        <h2 className="text-xl font-semibold text-slate-900 leading-none tracking-tight">
-                            {title}
-                        </h2>
-                        {description && (
-                            <p className="text-sm text-slate-500">{description}</p>
-                        )}
+                {!hideHeader && (
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="space-y-1">
+                            <h2 className="text-xl font-semibold text-slate-900 leading-none tracking-tight">
+                                {title}
+                            </h2>
+                            {description && (
+                                <p className="text-sm text-slate-500">{description}</p>
+                            )}
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-full hover:bg-slate-100"
+                            onClick={onClose}
+                        >
+                            <X className="w-4 h-4 text-slate-500" />
+                            <span className="sr-only">Close</span>
+                        </Button>
                     </div>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 rounded-full hover:bg-slate-100"
-                        onClick={onClose}
-                    >
-                        <X className="w-4 h-4 text-slate-500" />
-                        <span className="sr-only">Close</span>
-                    </Button>
-                </div>
+                )}
 
-                <div className="mt-2">
+                <div className={cn("mt-2 max-h-[70vh] overflow-y-auto pr-2", contentClassName)}>
                     {children}
                 </div>
             </div>

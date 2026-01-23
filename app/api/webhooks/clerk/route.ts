@@ -66,16 +66,32 @@ export async function POST(req: Request) {
 
         const fullName = [first_name, last_name].filter(Boolean).join(' ') || null
 
+        // Check if user exists to preserve custom avatar
+        const { data: existingUser } = await supabaseAdmin
+            .from('users')
+            .select('avatar_url')
+            .eq('id', id)
+            .single()
+
+        const userData: any = {
+            id: id,
+            email: primaryEmail,
+            full_name: fullName,
+            updated_at: new Date().toISOString()
+        }
+
+        // Only update avatar from Clerk if:
+        // 1. User doesn't exist (new user)
+        // 2. Existing user doesn't have an avatar
+        // 3. (Optional) We could add a flag to force sync, but for now preserve custom ones
+        if (!existingUser || !existingUser.avatar_url) {
+            userData.avatar_url = image_url || null
+        }
+
         // Upsert user to Supabase
         const { error } = await supabaseAdmin
             .from('users')
-            .upsert({
-                id: id,
-                email: primaryEmail,
-                full_name: fullName,
-                avatar_url: image_url || null,
-                // is_super_admin will be set by the database trigger for specific emails
-            }, {
+            .upsert(userData, {
                 onConflict: 'id'
             })
 

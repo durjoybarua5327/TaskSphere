@@ -49,12 +49,13 @@ export function StudentLayoutClient({ children, role, userId, user }: StudentLay
     }, [userId, router]);
 
     return (
-        <div className="min-h-screen bg-[#F8FAFC]">
+        <div className="h-screen overflow-hidden flex flex-col bg-[#F8FAFC]">
+            {/* Navbar is outside the scrollable area */}
             <UnifiedNavbar role={role} baseHref="/student" user={user} />
 
-            {/* Main Content Area */}
-            <main className="pt-24 pb-20 px-6">
-                <div className="max-w-[1400px] mx-auto">
+            {/* Main Content Area scrolls independently */}
+            <main className="flex-1 overflow-y-auto pt-24 pb-20 px-6 custom-scrollbar scroll-smooth bg-[#F8FAFC]">
+                <div className="max-w-[1400px] mx-auto min-h-full">
                     <motion.div
                         key={pathname}
                         initial={{ opacity: 0, y: 10 }}

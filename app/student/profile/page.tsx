@@ -3,22 +3,30 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import { StudentProfileClient } from "./student-profile-client";
 import { redirect } from "next/navigation";
 
-async function getData() {
-    const { userId } = await auth();
+import { getUserRole } from "@/lib/get-user-role";
 
-    if (!userId) return { userId: null, profile: null, posts: [] };
+async function getData(searchUserId?: string) {
+    const { userId: currentUserId } = await auth();
+
+    if (!currentUserId) return { userId: null, profile: null, posts: [] };
+
+    const targetUserId = searchUserId || currentUserId;
+    const isOwnProfile = targetUserId === currentUserId;
 
     const supabase = createAdminClient();
+
+    // Fetch user role
+    const role = await getUserRole(targetUserId);
 
     // Fetch user profile from DB
     const { data: profile } = await supabase
         .from("users")
         .select("*")
-        .eq("id", userId)
+        .eq("id", targetUserId)
         .single();
 
     // Fetch user posts with required joins for PostFeed
-    const { data: posts } = await supabase
+    const { data: rawPosts } = await supabase
         .from("posts")
         .select(`
             *,
@@ -31,19 +39,29 @@ async function getData() {
             likes: likes(user_id),
             comments: comments(count)
         `)
-        .eq("author_id", userId)
+        .eq("author_id", targetUserId)
         .order("created_at", { ascending: false });
 
+    const posts = rawPosts?.map(post => ({
+        ...post,
+        users: {
+            ...post.users,
+            role: role
+        }
+    })) || [];
+
     return {
-        userId,
-        profile,
-        posts: posts || []
+        userId: currentUserId,
+        profile: { ...profile, role },
+        posts,
+        isOwnProfile
     };
 }
 
-export default async function ProfilePage() {
+export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ userId?: string }> }) {
     const user = await currentUser();
-    const { userId, profile, posts } = await getData();
+    const { userId: searchUserId } = await searchParams;
+    const { userId, profile, posts, isOwnProfile } = await getData(searchUserId);
 
     if (!userId || !profile) {
         if (!user) return null;
@@ -65,5 +83,5 @@ export default async function ProfilePage() {
         avatar_url: profile.avatar_url || user?.imageUrl
     };
 
-    return <StudentProfileClient profile={completeProfile} posts={posts} currentUserId={userId} />;
+    return <StudentProfileClient key={completeProfile.id} profile={completeProfile} posts={posts} currentUserId={userId} isOwnProfile={isOwnProfile} />;
 }

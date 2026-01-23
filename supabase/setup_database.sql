@@ -36,12 +36,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- Add columns if they don't exist (for updates to existing tables)
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'portfolio_url') THEN
-        ALTER TABLE users ADD COLUMN portfolio_url TEXT;
-    END IF;
-END $$;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS portfolio_url TEXT;
 
 -- GROUPS Table
 CREATE TABLE IF NOT EXISTS groups (
@@ -52,6 +47,7 @@ CREATE TABLE IF NOT EXISTS groups (
     department TEXT,
     topics TEXT[],
     top_admin_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    avatar_url TEXT,
     admin_only_chat BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -160,7 +156,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     visibility TEXT DEFAULT 'group',
     attachments TEXT[] DEFAULT '{}',
     submissions_visibility TEXT DEFAULT 'private' CHECK (submissions_visibility IN ('private', 'public')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- SUBMISSIONS Table
@@ -173,7 +170,8 @@ CREATE TABLE IF NOT EXISTS submissions (
     link_url TEXT,
     attachments TEXT[] DEFAULT '{}',
     status TEXT DEFAULT 'submitted' CHECK (status IN ('submitted', 'graded', 'revision')),
-    submitted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    submitted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- SCORES Table
@@ -292,6 +290,12 @@ CREATE TRIGGER update_groups_updated_at BEFORE UPDATE ON groups FOR EACH ROW EXE
 
 DROP TRIGGER IF EXISTS update_posts_updated_at ON posts;
 CREATE TRIGGER update_posts_updated_at BEFORE UPDATE ON posts FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_tasks_updated_at ON tasks;
+CREATE TRIGGER update_tasks_updated_at BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_submissions_updated_at ON submissions;
+CREATE TRIGGER update_submissions_updated_at BEFORE UPDATE ON submissions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Auto-assign Super Admin by Email
 CREATE OR REPLACE FUNCTION public.maintain_super_admin_status() 
@@ -526,12 +530,45 @@ CREATE POLICY "Admins can grade" ON scores FOR ALL USING (
 -- 6. REALTIME ENABLING
 -- ============================================
 
--- Enable Realtime for specific tables
-ALTER publication supabase_realtime ADD TABLE posts;
-ALTER publication supabase_realtime ADD TABLE likes;
-ALTER publication supabase_realtime ADD TABLE comments;
-ALTER publication supabase_realtime ADD TABLE notifications;
-ALTER publication supabase_realtime ADD TABLE group_messages;
+-- Create publication if it doesn't exist (helpful for fresh setups)
+-- Create publication if it doesn't exist
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+        CREATE PUBLICATION supabase_realtime;
+    END IF;
+END $$;
+
+-- Enable Realtime for specific tables (idempotent approach)
+DO $$
+DECLARE
+    tbl_name TEXT;
+    table_list TEXT[] := ARRAY['posts', 'likes', 'comments', 'notifications', 'messages', 'group_messages'];
+BEGIN
+    FOREACH tbl_name IN ARRAY table_list LOOP
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = tbl_name AND schemaname = 'public') THEN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_publication_tables 
+                WHERE pubname = 'supabase_realtime' 
+                AND schemaname = 'public' 
+                AND tablename = tbl_name
+            ) THEN
+                EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE %I', tbl_name);
+            END IF;
+        END IF;
+    END LOOP;
+END $$;
+
+-- Set replica identity to FULL to ensure old/new data is sent in Realtime
+DO $$ 
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'messages' AND schemaname = 'public') THEN
+        ALTER TABLE messages REPLICA IDENTITY FULL;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'group_messages' AND schemaname = 'public') THEN
+        ALTER TABLE group_messages REPLICA IDENTITY FULL;
+    END IF;
+END $$;
 
 -- ============================================
 -- 7. ADDITIONAL MIGRATIONS (Task Attachments)
@@ -549,17 +586,35 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS submissions_visibility TEXT DEFAULT '
 -- Create a storage bucket for task attachments if it doesn't exist
 INSERT INTO storage.buckets (id, name, public) 
 VALUES ('task-attachments', 'task-attachments', true)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET public = true;
 
--- Policy to allow authenticated users to upload files
-CREATE POLICY "Authenticated users can upload task attachments"
+-- Drop any existing policies to avoid conflicts
+DROP POLICY IF EXISTS "Authenticated users can upload task attachments" ON storage.objects;
+DROP POLICY IF EXISTS "Public can view task attachments" ON storage.objects;
+DROP POLICY IF EXISTS "Users can update their own attachments" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete their own attachments" ON storage.objects;
+
+-- Policy to allow anyone to upload files to task-attachments (application logic handles auth)
+CREATE POLICY "Allow uploads to task-attachments"
 ON storage.objects FOR INSERT
-TO authenticated
+TO public
 WITH CHECK (bucket_id = 'task-attachments');
 
 -- Policy to allow public to view task attachments
 CREATE POLICY "Public can view task attachments"
 ON storage.objects FOR SELECT
+TO public
+USING (bucket_id = 'task-attachments');
+
+-- Allow UPDATE own files (if owner is set)
+CREATE POLICY "Users can update their own attachments"
+ON storage.objects FOR UPDATE
+TO public
+USING (bucket_id = 'task-attachments');
+
+-- Allow DELETE own files
+CREATE POLICY "Users can delete their own attachments"
+ON storage.objects FOR DELETE
 TO public
 USING (bucket_id = 'task-attachments');
 

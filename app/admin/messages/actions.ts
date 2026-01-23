@@ -174,3 +174,57 @@ export async function deleteGroupMessage(messageId: string) {
     return { success: true };
 }
 
+export async function clearDirectMessages(otherUserId: string) {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", success: false };
+
+    const supabase = createAdminClient();
+
+    const { error } = await supabase
+        .from("messages")
+        .delete()
+        .or(`and(sender_id.eq.${userId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${userId})`);
+
+    if (error) {
+        console.error("Error clearing direct messages:", error);
+        return { error: error.message, success: false };
+    }
+
+    revalidatePath("/superadmin/messages");
+    return { success: true };
+}
+export async function deleteDirectMessage(messageId: string) {
+    const { userId } = await auth();
+    if (!userId) return { error: "Not authenticated", success: false };
+
+    const supabase = createAdminClient();
+
+    // Get the message to verify ownership
+    const { data: message } = await supabase
+        .from("messages")
+        .select("sender_id")
+        .eq("id", messageId)
+        .single();
+
+    if (!message) {
+        return { error: "Message not found", success: false };
+    }
+
+    // Only the sender can delete their own message
+    if (message.sender_id !== userId) {
+        return { error: "You can only delete your own messages", success: false };
+    }
+
+    // Delete the message
+    const { error } = await supabase
+        .from("messages")
+        .delete()
+        .eq("id", messageId);
+
+    if (error) {
+        console.error("Error deleting direct message:", error);
+        return { error: error.message, success: false };
+    }
+
+    return { success: true };
+}

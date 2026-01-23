@@ -1,76 +1,46 @@
 import { Suspense } from "react";
+import { auth } from "@clerk/nextjs/server";
+import { getGroupDetails, getGroupMembers, getTasks, getGroupJoinRequests } from "../../actions";
+import { GroupDetailsClient } from "./client";
 import { notFound } from "next/navigation";
-import { getGroupDetails, getGroupMembers, getGroupJoinRequests, getTasks } from "../../actions";
-import { GroupDetailClient } from "./GroupDetailClient";
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 
-interface PageProps {
-    params: Promise<{
-        groupId: string;
-    }>;
-    searchParams: Promise<{
-        tab?: string;
-    }>;
-}
+export const metadata = {
+    title: "Group Details | Admin Console",
+    description: "Manage group members, tasks, and settings",
+};
 
-export default async function GroupDetailPage(props: PageProps) {
-    // Await params and searchParams
-    const { groupId } = await props.params;
-    const { tab } = await props.searchParams;
+export default async function ViewGroupPage({ params }: { params: { groupId: string } }) {
+    const resolvedParams = await params;
+    const { groupId } = resolvedParams;
 
-    const [groupRes, membersRes, requestsRes, tasksRes] = await Promise.all([
+    const [groupRes, membersRes, tasksRes, requestsRes] = await Promise.all([
         getGroupDetails(groupId),
         getGroupMembers(groupId),
-        getGroupJoinRequests(groupId),
-        getTasks(groupId)
+        getTasks(groupId),
+        getGroupJoinRequests(groupId)
     ]);
 
-    if (!groupRes.group) {
-        return notFound();
+    if (groupRes.error || !groupRes.group) {
+        notFound();
     }
 
-    return (
-        <div className="min-h-screen bg-slate-50/50 px-4 py-4 md:px-8 md:py-6 pb-24">
-            <div className="max-w-7xl mx-auto space-y-4">
-                {/* Breadcrumbs / Back button */}
-                <Link
-                    href="/admin/groups"
-                    className="flex items-center gap-2 text-slate-400 hover:text-emerald-600 transition-colors font-black text-[10px] uppercase tracking-widest group w-fit"
-                >
-                    <div className="p-2 bg-white border border-slate-100 rounded-xl group-hover:border-emerald-100 transition-all">
-                        <ChevronLeft className="w-4 h-4" />
-                    </div>
-                    Back to Groups
-                </Link>
+    // Transform tasks to include group name for consistency with shared components if needed,
+    // though here we know the group.
+    const tasksWithGroup = tasksRes.tasks?.map((t: any) => ({
+        ...t,
+        group: { name: groupRes.group.name },
+        group_id: groupId
+    })) || [];
 
-                <Suspense fallback={<GroupDetailLoading />}>
-                    <GroupDetailClient
-                        group={groupRes.group}
-                        initialMembers={membersRes.members || []}
-                        initialRequests={requestsRes.requests || []}
-                        initialTasks={tasksRes.tasks || []}
-                        initialTab={(tab as 'members' | 'tasks') || 'members'}
-                    />
-                </Suspense>
-            </div>
-        </div>
-    );
-}
+    const { userId } = await auth();
 
-function GroupDetailLoading() {
     return (
-        <div className="space-y-8 animate-pulse">
-            <div className="h-32 bg-white rounded-[2.5rem] border border-slate-100" />
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-6">
-                    <div className="h-20 bg-white rounded-3xl border border-slate-100" />
-                    <div className="h-96 bg-white rounded-[2.5rem] border border-slate-100" />
-                </div>
-                <div className="space-y-6">
-                    <div className="h-64 bg-white rounded-[2.5rem] border border-slate-100" />
-                </div>
-            </div>
-        </div>
+        <GroupDetailsClient
+            initialGroup={groupRes.group}
+            initialMembers={membersRes.members || []}
+            initialTasks={tasksWithGroup}
+            initialRequests={requestsRes.requests || []}
+            currentUserId={userId || ""}
+        />
     );
 }

@@ -16,7 +16,8 @@ import {
 import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
-import profilePic from "../app/profile/profile.jpeg";
+import profilePic from "../profile/profile.jpeg";
+import { MockDashboard } from "@/components/mock-dashboard";
 
 export function LandingHero() {
     const [activeTab, setActiveTab] = useState(0);
@@ -73,7 +74,9 @@ export function LandingHero() {
                                         </div>
                                     </div>
                                 </div>
-                                <DashboardMockup />
+                                <div className="relative aspect-[16/10] w-full bg-slate-50 flex flex-col">
+                                    <MockDashboard />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -150,18 +153,18 @@ export function LandingHero() {
                         <div className="hidden md:block absolute top-12 left-[16%] right-[16%] h-0.5 bg-slate-100 -z-10" />
                         <ProcessStep
                             number="01"
-                            title="Create workspace"
-                            description="Sign up and set up your learning environment in under 2 minutes. Import existing data or start fresh."
+                            title="Join & Personalize"
+                            description="Sign up and complete your profile. Whether you're a student or an admin, your journey starts with a personalized workspace."
                         />
                         <ProcessStep
                             number="02"
-                            title="Invite your team"
-                            description="Add students, co-educators, and administrators. Assign roles and permissions with one click."
+                            title="Connect & Collaborate"
+                            description="Join institute groups or create your own. Connect with peers, share resources, and start communicating in real-time."
                         />
                         <ProcessStep
                             number="03"
-                            title="Start managing"
-                            description="Create tasks, set deadlines, and let AI handle the grading. Focus on what matters - teaching."
+                            title="Achieve & Excel"
+                            description="Tackle assignments with confidence. Get instant AI-powered feedback on your tasks and track your academic progress."
                         />
                     </div>
                 </div>
@@ -270,39 +273,3 @@ function ProcessStep({ number, title, description }: { number: string; title: st
     );
 }
 
-function DashboardMockup() {
-    return (
-        <div className="bg-slate-800 p-6">
-            <div className="grid grid-cols-4 gap-4 mb-6">
-                {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="bg-slate-700/50 rounded-lg p-4">
-                        <div className="w-8 h-8 rounded bg-emerald-500/20 mb-3" />
-                        <div className="h-3 bg-slate-600 rounded w-20 mb-2" />
-                        <div className="h-6 bg-slate-600 rounded w-12" />
-                    </div>
-                ))}
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-                <div className="col-span-2 bg-slate-700/50 rounded-lg p-4 space-y-3">
-                    {[1, 2, 3, 4].map((i) => (
-                        <div key={i} className="flex items-center gap-3 p-3 bg-slate-800/50 rounded">
-                            <div className="w-10 h-10 rounded bg-emerald-500/20" />
-                            <div className="flex-1 space-y-2">
-                                <div className="h-3 bg-slate-600 rounded w-3/4" />
-                                <div className="h-2 bg-slate-600/50 rounded w-1/2" />
-                            </div>
-                        </div>
-                    ))}
-                </div>
-                <div className="bg-slate-700/50 rounded-lg p-4">
-                    <div className="h-3 bg-slate-600 rounded w-20 mb-3" />
-                    <div className="space-y-2">
-                        {[75, 85, 68, 92, 80].map((width, i) => (
-                            <div key={i} className="h-2 bg-slate-600 rounded" style={{ width: `${width}%` }} />
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
