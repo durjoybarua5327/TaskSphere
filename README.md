@@ -2,8 +2,6 @@
 
 **TaskSphere** is a premium task management and collaboration platform designed for modern educational institutions. It features a high-end, dynamic user interface with real-time synchronization, role-based workflows, and AI-powered automation.
 
-[![Deploy with Vercel](https://tasksphere5327.vercel.app/)
-
 ---
 
 ## ✨ Key Features
