@@ -22,11 +22,13 @@ export async function getSuperAdmin() {
     return data;
 }
 
+import { logDebug } from "@/lib/debug-logger";
+
 export async function sendDirectMessage(receiverId: string, content: string, isAiResponse: boolean = false) {
-    console.log(`Action: Sending direct message to ${receiverId}, isAi: ${isAiResponse}`);
+    logDebug(`ACTION: sendDirectMessage`, { receiverId, content, isAiResponse });
     const { userId } = await auth();
     if (!userId) {
-        console.error("Action: Not authenticated");
+        logDebug("ERROR: Not authenticated");
         return { error: "Not authenticated", success: false };
     }
 
@@ -45,17 +47,26 @@ export async function sendDirectMessage(receiverId: string, content: string, isA
         .single();
 
     if (error) {
-        console.error("Error sending direct message:", error);
+        logDebug("ERROR: Database insert failed", error);
         return { error: error.message, success: false };
     }
+
+    logDebug("SUCCESS: Message saved to DB");
 
     // If a non-superadmin sends a message to a superadmin, and it's NOT an AI response
     // Trigger AI logic
     if (!isAiResponse) {
-        const { data: receiver } = await supabase.from("users").select("is_super_admin").eq("id", receiverId).single();
+        logDebug(`CHECKING: Is receiver ${receiverId} a superadmin?`);
+        const { data: receiver, error: receiverError } = await supabase.from("users").select("is_super_admin").eq("id", receiverId).single();
+
+        logDebug(`RECEIVER DATA:`, { receiver, error: receiverError });
+
         if (receiver?.is_super_admin) {
+            logDebug("TRIGGER: Calling processAiResponse");
             // In a real app, you'd queue this or run it in background
             await processAiResponse(userId, content);
+        } else {
+            logDebug("SKIP: Receiver is not superadmin");
         }
     }
 
@@ -63,99 +74,62 @@ export async function sendDirectMessage(receiverId: string, content: string, isA
     return { success: true, message: data };
 }
 
+import { generateAiResponse } from "@/lib/ai-service";
+
 async function processAiResponse(userId: string, userMessage: string) {
+    logDebug(`PROCESS: processAiResponse`, { userId, message: userMessage });
+
     try {
         const supabase = createAdminClient();
 
-        // Check if AI is enabled for this user
-        const { data: userData } = await supabase
-            .from("users")
-            .select("ai_enabled")
-            .eq("id", userId)
-            .single();
-
+        // 1. Check if enabled
+        const { data: userData } = await supabase.from("users").select("ai_enabled").eq("id", userId).single();
         if (userData?.ai_enabled === false) {
-            console.log(`AI: Disabled for user ${userId}`);
+            logDebug(`AI: Disabled for user ${userId}`);
             return;
         }
 
-        console.log(`AI: Processing intelligent response for user ${userId}`);
-
-        // Get conversation history
-        const { data: history, error: historyError } = await supabase
+        // 2. Fetch History (So AI can remember context for group creation flow)
+        const { data: history } = await supabase
             .from("messages")
             .select("*")
             .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
             .order("created_at", { ascending: false })
-            .limit(15);
+            .limit(10); // Limit context length
 
-        if (historyError) throw historyError;
-
-        const msg = userMessage.toLowerCase();
-
-        // Human-admin bypass
-        if (msg.includes("admin") || msg.includes("superadmin") || msg.startsWith("@")) {
-            return;
-        }
-
-        // Prepare conversation for LLM
-        const lastMessages = history?.reverse() || [];
-        const promptMessages = lastMessages.map(m => ({
-            role: (m.is_ai_response || m.sender_id !== userId) ? 'assistant' : 'user' as const,
+        const previousMessages = (history?.reverse() || []).map(m => ({
+            role: (m.is_ai_response || m.sender_id !== userId) ? 'assistant' : 'user',
             content: m.content
         }));
 
-        // Add current message if not yet in history
-        if (promptMessages.length === 0 || promptMessages[promptMessages.length - 1].content !== userMessage) {
-            promptMessages.push({ role: 'user', content: userMessage });
-        }
+        // 3. Generate Response
+        const aiResponse = await generateAiResponse(userMessage, previousMessages);
 
-        const systemPrompt = `
-            You are the TaskSphere AI Assistant representing the Superadmin.
-            Goals:
-            1. Help with platform questions professionally.
-            2. If the user wants a NEW GROUP (keywords: create group, new group), guide them through these 5 steps: Name, Description, Department, Members, and Justification.
-            3. Once ALL 5 are collected, say: "Excellent! I have collected all the necessary information. I'm submitting your group creation request to the Superadmin now."
-            4. Append the tag [SUBMIT_GROUP_REQUEST] ONLY at the very end of your final confirmation message.
-            
-            Be helpful, professional, and concise. Respond in plain text.
-        `;
-
-        const { text: aiResponse } = await generateText({
-            model: defaultModel,
-            system: systemPrompt,
-            messages: promptMessages as any,
-        });
-
+        // 4. Send Response
         if (aiResponse) {
             const { data: superAdmin } = await supabase.from("users").select("id").eq("is_super_admin", true).limit(1).single();
             if (superAdmin) {
-                const cleanedResponse = aiResponse.replace("[SUBMIT_GROUP_REQUEST]", "").trim();
-
-                await supabase.from("messages").insert({
+                const { error: msgError } = await supabase.from("messages").insert({
                     sender_id: superAdmin.id,
                     receiver_id: userId,
-                    content: cleanedResponse,
+                    content: aiResponse.trim(),
                     is_ai_response: true
                 });
 
-                if (aiResponse.includes("[SUBMIT_GROUP_REQUEST]")) {
-                    const { data: userData } = await supabase.from("users").select("*").eq("id", userId).single();
-                    await supabase.from("group_creation_messages").insert({
-                        sender_id: userId,
-                        sender_name: userData?.full_name || "Unknown",
-                        sender_email: userData?.email || "Unknown",
-                        requested_group_name: "Group Request (AI Processed)",
-                        group_description: "Request collected via intelligent chat.",
-                        creation_method: "ai_assisted",
-                        status: "pending",
-                        metadata: { history: promptMessages }
-                    });
+                if (msgError) {
+                    logDebug("ERROR: Failed to save AI response", msgError);
+                } else {
+                    logDebug("SUCCESS: AI response sent");
                 }
+            } else {
+                logDebug("ERROR: No Superadmin found to act as sender");
             }
         }
-    } catch (err) {
-        console.error("AI: processAiResponse failed:", err);
+    } catch (err: any) {
+        logDebug("CRITICAL ERROR in processAiResponse", {
+            message: err.message,
+            stack: err.stack
+        });
     }
 }
 
@@ -169,6 +143,7 @@ export async function getDirectMessages(otherUserId: string) {
 
     const supabase = createAdminClient();
 
+    // Optimized: Limit to last 100 messages and use simpler query
     const { data, error } = await supabase
         .from("messages")
         .select(`
@@ -177,30 +152,34 @@ export async function getDirectMessages(otherUserId: string) {
                 id,
                 full_name,
                 avatar_url
-            ),
-            receiver:receiver_id (
-                id,
-                full_name,
-                avatar_url
             )
         `)
         .or(`and(sender_id.eq.${userId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${userId})`)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false })
+        .limit(100);
 
     if (error) {
         console.error("Error fetching direct messages:", error);
         return { error: error.message, messages: [] };
     }
 
-    // Mark as read
-    await supabase
+    // Mark as read (non-blocking - fire and forget)
+    supabase
         .from("messages")
         .update({ is_read: true })
         .eq("receiver_id", userId)
         .eq("sender_id", otherUserId)
-        .eq("is_read", false);
+        .eq("is_read", false)
+        .then((result) => {
+            if (result.error) {
+                console.error("Error marking messages as read:", result.error);
+            } else {
+                console.log("Messages marked as read");
+            }
+        });
 
-    return { messages: data || [] };
+    // Return messages in ascending order (oldest first)
+    return { messages: data?.reverse() || [] };
 }
 
 export async function getDirectConversations() {

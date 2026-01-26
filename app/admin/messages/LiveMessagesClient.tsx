@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
     Search,
@@ -71,6 +71,7 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
     const [groups, setGroups] = useState<Group[]>(initialGroups);
     const [sendError, setSendError] = useState<string>("");
     const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [realtimeStatus, setRealtimeStatus] = useState<string>("DISCONNECTED");
     const [isClearingHistory, setIsClearingHistory] = useState(false);
     const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
@@ -78,12 +79,15 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const [supabase] = useState(() => createClient());
 
-    const activeGroup = groups.find(g => g.id === activeGroupId);
+    const activeGroup = useMemo(() => groups.find(g => g.id === activeGroupId), [groups, activeGroupId]);
 
-    // Derived filtered groups
-    const filteredGroups = groups.filter(group =>
-        group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        group.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    // Derived filtered groups - memoized for performance
+    const filteredGroups = useMemo(() =>
+        groups.filter(group =>
+            group.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            group.description?.toLowerCase().includes(searchTerm.toLowerCase())
+        ),
+        [groups, searchTerm]
     );
 
     // Sync state with server props (for realtime sidebar updates)
@@ -116,28 +120,20 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
         loadMessages();
     }, [activeGroupId, isDirectChat]);
 
-    // Set up global realtime for sidebar updates
-    useEffect(() => {
-        const channel = supabase
-            .channel('global_chat_updates')
-            .on(
-                'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'messages' },
-                () => { router.refresh(); }
-            )
-            .on(
-                'postgres_changes',
-                { event: 'INSERT', schema: 'public', table: 'group_messages' },
-                () => { router.refresh(); }
-            )
-            .subscribe();
-
-        return () => { supabase.removeChannel(channel); };
-    }, [router]);
+    const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+        if (messagesContainerRef.current) {
+            const container = messagesContainerRef.current;
+            // Scroll to bottom (max scrollTop) to see latest messages which are at the visual bottom
+            // in a flex-col-reverse layout where correct visual order is maintained.
+            container.scrollTo({ top: container.scrollHeight, behavior });
+        }
+    }, []);
 
     // Set up realtime subscription for current chat
     useEffect(() => {
+        // Skip if direct chat but no superadmin/user, or if group chat but no activeGroupId
         if (isDirectChat && (!superAdmin || !user?.id)) return;
+        if (!isDirectChat && !activeGroupId) return;
 
         console.log('Setting up realtime for:', isDirectChat ? 'direct chat' : `group ${activeGroupId}`);
 
@@ -158,6 +154,7 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                 },
                 async (payload: any) => {
                     console.log('Realtime Event:', payload.eventType, payload.new?.id || payload.old?.id);
+                    console.log('Payload details:', { table, isDirectChat, activeGroupId, payload });
 
                     if (payload.eventType === 'DELETE') {
                         setMessages(prev => prev.filter(m => m.id !== payload.old.id));
@@ -187,6 +184,7 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                     });
 
                     if (!exists) {
+                        console.log('Fetching full message details for:', payload.new.id);
                         // Fetch full message with sender details asynchronously
                         const { data, error } = await supabase
                             .from(table)
@@ -202,26 +200,41 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                             .single();
 
                         if (data && !error) {
+                            console.log('Adding message to UI:', data.id);
                             setMessages(current => {
                                 if (current.some(m => m.id === data.id)) return current;
                                 return [...current, data as Message];
                             });
                             // Smooth scroll for new messages
                             setTimeout(() => scrollToBottom('smooth'), 100);
+                        } else {
+                            console.error('Error fetching message details:', error);
                         }
+                    } else {
+                        console.log('Message already exists, skipping:', payload.new.id);
                     }
                 }
             )
-            .subscribe((status: string) => {
+            .subscribe((status: string, err?: any) => {
                 console.log(`Realtime Status (${isDirectChat ? 'Direct' : 'Group'}):`, status);
+                if (err) {
+                    console.error('Realtime subscription error:', err);
+                }
+                setRealtimeStatus(status);
+
+                // Log when successfully subscribed
+                if (status === 'SUBSCRIBED') {
+                    console.log(`✅ Successfully subscribed to ${isDirectChat ? 'direct messages' : `group ${activeGroupId}`}`);
+                }
             });
 
         return () => {
+            console.log('Cleaning up realtime subscription for:', channelId);
             supabase.removeChannel(channel);
         };
-    }, [activeGroupId, isDirectChat, user?.id, superAdmin?.id]);
+    }, [activeGroupId, isDirectChat, user?.id, superAdmin?.id, scrollToBottom, supabase]);
 
-    const loadMessages = async (silent = false) => {
+    const loadMessages = useCallback(async (silent = false) => {
         if (!activeGroupId) return;
 
         if (!silent) setLoading(true);
@@ -229,14 +242,14 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
         setMessages(fetchedMessages || []);
         if (!silent) {
             setLoading(false);
-            // No need for scrollToBottom with flex-col-reverse initial state
+            setTimeout(() => scrollToBottom("auto"), 100);
         }
-    };
+    }, [activeGroupId, scrollToBottom]);
 
     // Helper to fetch group messages (keeping original function name for consistency)
     const getGroupReceipts = getGroupMessages;
 
-    const loadDirectMessages = async (silent = false) => {
+    const loadDirectMessages = useCallback(async (silent = false) => {
         if (!superAdmin) return;
 
         if (!silent) setLoading(true);
@@ -256,17 +269,13 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
         setMessages(formattedMessages || []);
         if (!silent) {
             setLoading(false);
-            // No need for scrollToBottom with flex-col-reverse initial state
+            setTimeout(() => scrollToBottom("auto"), 100);
         }
-    };
+    }, [superAdmin, user?.id, scrollToBottom]);
 
-    const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
-        messagesEndRef.current?.scrollIntoView({ behavior });
-    };
-
-    const handleSendMessage = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const content = messageInput.trim();
+    const handleSendMessage = async (e?: React.FormEvent, overrideContent?: string) => {
+        if (e) e.preventDefault();
+        const content = (overrideContent || messageInput).trim();
         if (!content || !user) return;
 
         // Optimistic UI update
@@ -291,10 +300,13 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
         setSendError("");
 
         if (isDirectChat && superAdmin) {
+            console.log("Sending direct message to SuperAdmin AI...");
             const result = await sendDirectMessage(superAdmin.id, content);
+            console.log("Direct message result:", result);
             if (result.success) {
-                // Silently refresh to get real ID and AI responses
-                loadDirectMessages(true);
+                // Realtime subscription will handle updating with server response
+                // Remove optimistic message - realtime will add the real one
+                setMessages(prev => prev.filter(m => m.id !== tempId));
             } else {
                 setMessages(prev => prev.filter(m => m.id !== tempId));
                 setSendError(result.error || "Failed to send message");
@@ -309,10 +321,9 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
             setMessages(prev => prev.filter(m => m.id !== tempId));
             setSendError(result.error);
             setTimeout(() => setSendError(""), 3000);
-        } else {
-            // Realtime will handle the official record, but we can refresh silently
-            loadMessages(true);
         }
+        // On success, keep the optimistic message - realtime will replace it with the real one
+        // The duplicate detection in realtime subscription will handle this properly
     };
 
     const handleEmojiClick = (emojiData: EmojiClickData) => {
@@ -326,6 +337,18 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
 
     const confirmDelete = async () => {
         if (!messageToDelete) return;
+
+        // Check if it's an optimistic message (timestamp ID) vs real message (UUID)
+        // UUIDs have hyphens, timestamps don't
+        const isOptimistic = !messageToDelete.includes('-');
+
+        if (isOptimistic) {
+            // Just remove from local state, no server call needed
+            setMessages(prev => prev.filter(msg => msg.id !== messageToDelete));
+            setShowDeleteModal(false);
+            setMessageToDelete(null);
+            return;
+        }
 
         const result = isDirectChat
             ? await deleteDirectMessage(messageToDelete)
@@ -671,7 +694,6 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                                     );
                                 })
                             )}
-                            <div ref={messagesEndRef} />
                         </div>
 
                         {/* Input Area */}
@@ -684,11 +706,56 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                             )}
 
                             <div className="relative">
+                                {/* Slash commands manual hint popup */}
+                                {messageInput.startsWith('/') && (
+                                    <div className="absolute bottom-full mb-2 left-0 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50 animate-in slide-in-from-bottom-2 fade-in duration-200">
+                                        <div className="bg-slate-50 px-4 py-2 border-b border-slate-100">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Available Commands</p>
+                                        </div>
+                                        <div className="p-1">
+                                            {[
+                                                { cmd: '/create group', desc: 'Create a new group' },
+                                                { cmd: '/about', desc: 'About TaskSphere' },
+                                                { cmd: '/founder', desc: 'Who created this?' },
+                                                { cmd: '/help', desc: 'How to use...' }
+                                            ]
+                                                .filter(item => item.cmd.toLowerCase().includes(messageInput.toLowerCase()))
+                                                .map((item, idx) => (
+                                                    <button
+                                                        key={idx}
+                                                        onClick={() => {
+                                                            // Auto-send the command
+                                                            handleSendMessage(undefined, item.cmd);
+                                                        }}
+                                                        className="w-full text-left px-3 py-2.5 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-3 group"
+                                                    >
+                                                        <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                            /
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-bold text-slate-700">{item.cmd}</p>
+                                                            <p className="text-[10px] font-medium text-slate-400">{item.desc}</p>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            {/* Show empty state if filtering returns nothing */}
+                                            {[
+                                                { cmd: '/create group', desc: 'Create a new group' },
+                                                { cmd: '/about', desc: 'About TaskSphere' },
+                                                { cmd: '/founder', desc: 'Who created this?' },
+                                                { cmd: '/help', desc: 'How to use...' }
+                                            ].filter(item => item.cmd.toLowerCase().includes(messageInput.toLowerCase())).length === 0 && (
+                                                    <div className="p-3 text-center text-xs text-slate-400 italic">No matching commands</div>
+                                                )}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <form onSubmit={handleSendMessage} className="flex items-end gap-2 bg-slate-50 border border-slate-200 rounded-3xl p-2 pl-4 focus-within:ring-4 ring-indigo-500/10 focus-within:border-indigo-500/30 transition-all">
                                     <textarea
                                         value={messageInput}
                                         onChange={(e) => setMessageInput(e.target.value)}
-                                        placeholder="Type your request to the AI Assistant..."
+                                        placeholder="Type your request to the AI Assistant... (e.g., /create group, /about)"
                                         className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-slate-700 placeholder:text-slate-400 py-3 max-h-32 resize-none"
                                         rows={1}
                                         onKeyDown={(e) => {
@@ -722,9 +789,19 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                                         <div className="absolute -right-1 -top-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full" />
                                     </div>
                                     <div>
-                                        <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">
-                                            {activeGroup.name}
-                                        </h3>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">
+                                                {activeGroup.name}
+                                            </h3>
+                                            <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${realtimeStatus === 'SUBSCRIBED'
+                                                ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                                : 'bg-amber-50 text-amber-600 border-amber-200'
+                                                }`}>
+                                                <div className={`w-1.5 h-1.5 rounded-full ${realtimeStatus === 'SUBSCRIBED' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                                                    }`} />
+                                                {realtimeStatus === 'SUBSCRIBED' ? 'LIVE' : realtimeStatus}
+                                            </div>
+                                        </div>
                                         <div className="flex items-center gap-2">
                                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                                                 {activeGroup.members?.[0]?.count || 0} Members
@@ -868,7 +945,6 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                                     );
                                 })
                             )}
-                            <div ref={messagesEndRef} />
                         </div>
 
                         {/* Input Area */}
@@ -996,6 +1072,6 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+        </div >
     );
 }
