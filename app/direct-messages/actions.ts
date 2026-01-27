@@ -63,6 +63,7 @@ export async function sendDirectMessage(receiverId: string, content: string, isA
 
         if (receiver?.is_super_admin) {
             logDebug("TRIGGER: Calling processAiResponse");
+            console.log("TRIGGER: Calling processAiResponse for user", userId);
             // In a real app, you'd queue this or run it in background
             await processAiResponse(userId, content);
         } else {
@@ -126,10 +127,32 @@ async function processAiResponse(userId: string, userMessage: string) {
             }
         }
     } catch (err: any) {
+        console.error("AI_CRITICAL_ERROR:", err);
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            fs.writeFileSync(path.join(process.cwd(), 'last-error.txt'), `Time: ${new Date().toISOString()}\nError: ${err.message}\nStack: ${err.stack}\n`);
+        } catch (e) {
+            console.error("Failed to write to error log");
+        }
+
         logDebug("CRITICAL ERROR in processAiResponse", {
             message: err.message,
             stack: err.stack
         });
+
+        // Send error message to user so they know AI is broken
+        const supabase = createAdminClient();
+        const { data: superAdmin } = await supabase.from("users").select("id").eq("is_super_admin", true).limit(1).single();
+
+        if (superAdmin) {
+            await supabase.from("messages").insert({
+                sender_id: superAdmin.id,
+                receiver_id: userId,
+                content: "I apologize, but I'm encountering a technical issue connecting to my brain. Please try again later.",
+                is_ai_response: true
+            });
+        }
     }
 }
 

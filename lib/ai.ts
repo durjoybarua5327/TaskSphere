@@ -1,8 +1,8 @@
 import { createOpenAI } from '@ai-sdk/openai';
 
-export const openrouter = createOpenAI({
-    baseURL: 'https://openrouter.ai/api/v1',
+export const groq = createOpenAI({
+    baseURL: 'https://api.groq.com/openai/v1',
     apiKey: process.env.OPENAI_API_KEY,
 });
 
-export const defaultModel = openrouter('google/gemini-2.0-flash-001');
+export const defaultModel = groq('llama-3.3-70b-versatile');

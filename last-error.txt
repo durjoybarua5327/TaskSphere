@@ -1,0 +1,37 @@
+Time: 2026-01-26T18:06:33.470Z
+Error: User not found.
+Stack: AI_APICallError: User not found.
+    at E:\Project\TaskSphere\.next\dev\server\chunks\ssr\_bf8df64c._.js:3082:24
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async postToApi (E:\Project\TaskSphere\.next\dev\server\chunks\ssr\_bf8df64c._.js:2955:36)
+    at async OpenAIResponsesLanguageModel.doGenerate (E:\Project\TaskSphere\.next\dev\server\chunks\ssr\node_modules_@ai-sdk_openai_dist_index_mjs_c86853f4._.js:4291:77)
+    at async fn (E:\Project\TaskSphere\.next\dev\server\chunks\ssr\node_modules_ai_dist_index_mjs_7a62fa11._.js:3919:52)
+    at async E:\Project\TaskSphere\.next\dev\server\chunks\ssr\node_modules_ai_dist_index_mjs_7a62fa11._.js:2115:28
+    at async _retryWithExponentialBackoff (E:\Project\TaskSphere\.next\dev\server\chunks\ssr\node_modules_ai_dist_index_mjs_7a62fa11._.js:2322:16)
+    at async fn (E:\Project\TaskSphere\.next\dev\server\chunks\ssr\node_modules_ai_dist_index_mjs_7a62fa11._.js:3877:48)
+    at async E:\Project\TaskSphere\.next\dev\server\chunks\ssr\node_modules_ai_dist_index_mjs_7a62fa11._.js:2115:28
+    at async generateText (E:\Project\TaskSphere\.next\dev\server\chunks\ssr\node_modules_ai_dist_index_mjs_7a62fa11._.js:3744:16)
+    at async generateAiResponse (E:\Project\TaskSphere\.next\dev\server\chunks\ssr\[root-of-the-server]__dc691ac5._.js:804:38)
+    at async processAiResponse (E:\Project\TaskSphere\.next\dev\server\chunks\ssr\[root-of-the-server]__dc691ac5._.js:933:28)
+    at async sendDirectMessage (E:\Project\TaskSphere\.next\dev\server\chunks\ssr\[root-of-the-server]__dc691ac5._.js:899:13)
+    at async executeActionAndPrepareForRender (E:\Project\TaskSphere\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:36:3803)
+    at async E:\Project\TaskSphere\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:36:1109
+    at async handleAction (E:\Project\TaskSphere\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:34:23598)
+    at async renderToHTMLOrFlightImpl (E:\Project\TaskSphere\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:41:42106)
+    at async doRender (E:\Project\TaskSphere\.next\dev\server\chunks\ssr\node_modules_next_dist_95f5438d._.js:2947:28)
+    at async AppPageRouteModule.handleResponse (E:\Project\TaskSphere\node_modules\next\dist\compiled\next-server\app-page-turbo.runtime.dev.js:43:64241)
+    at async handleResponse (E:\Project\TaskSphere\.next\dev\server\chunks\ssr\node_modules_next_dist_95f5438d._.js:3153:32)
+    at async Module.handler (E:\Project\TaskSphere\.next\dev\server\chunks\ssr\node_modules_next_dist_95f5438d._.js:3524:20)
+    at async DevServer.renderToResponseWithComponentsImpl (E:\Project\TaskSphere\node_modules\next\dist\server\base-server.js:1422:9)
+    at async DevServer.renderPageComponent (E:\Project\TaskSphere\node_modules\next\dist\server\base-server.js:1474:24)
+    at async DevServer.renderToResponseImpl (E:\Project\TaskSphere\node_modules\next\dist\server\base-server.js:1524:32)
+    at async DevServer.pipeImpl (E:\Project\TaskSphere\node_modules\next\dist\server\base-server.js:1018:25)
+    at async NextNodeServer.handleCatchallRenderRequest (E:\Project\TaskSphere\node_modules\next\dist\server\next-server.js:395:17)
+    at async DevServer.handleRequestImpl (E:\Project\TaskSphere\node_modules\next\dist\server\base-server.js:909:17)
+    at async E:\Project\TaskSphere\node_modules\next\dist\server\dev\next-dev-server.js:387:20
+    at async Span.traceAsyncFn (E:\Project\TaskSphere\node_modules\next\dist\trace\trace.js:157:20)
+    at async DevServer.handleRequest (E:\Project\TaskSphere\node_modules\next\dist\server\dev\next-dev-server.js:383:24)
+    at async invokeRender (E:\Project\TaskSphere\node_modules\next\dist\server\lib\router-server.js:248:21)
+    at async handleRequest (E:\Project\TaskSphere\node_modules\next\dist\server\lib\router-server.js:447:24)
+    at async requestHandlerImpl (E:\Project\TaskSphere\node_modules\next\dist\server\lib\router-server.js:496:13)
+    at async Server.requestListener (E:\Project\TaskSphere\node_modules\next\dist\server\lib\start-server.js:226:13)

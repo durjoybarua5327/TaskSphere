@@ -5,12 +5,21 @@ import fs from 'fs';
 import path from 'path';
 
 // Initialize OpenRouter
-const openrouter = createOpenAI({
-    baseURL: 'https://openrouter.ai/api/v1',
+// Initialize Groq
+const groq = createOpenAI({
+    baseURL: 'https://api.groq.com/openai/v1',
     apiKey: process.env.OPENAI_API_KEY,
 });
 
-const defaultModel = openrouter('google/gemini-2.0-flash-001');
+// Debug: Verify Key Check
+const key = process.env.OPENAI_API_KEY || "";
+logDebug(`AI-SERVICE: Key Check`, {
+    exists: !!key,
+    length: key.length,
+    prefix: key.substring(0, 10) + "..."
+});
+
+const defaultModel = groq('llama-3.3-70b-versatile');
 
 export async function generateAiResponse(userMessage: string, historyMessages: any[] = []) {
     logDebug("AI-SERVICE: Starting generation", { userMessage, historyLength: historyMessages.length });
@@ -114,6 +123,16 @@ export async function generateAiResponse(userMessage: string, historyMessages: a
 
     } catch (error: any) {
         logDebug("AI-SERVICE: Error", { message: error.message, stack: error.stack });
-        throw error;
+
+        // Handle specific API errors with user-friendly messages
+        if (error.message.includes('401') || error.message.includes('User not found')) {
+            return "system_alert: Authentication Failed. The OpenRouter API Key in .env is invalid or expired. Please update OPENAI_API_KEY.";
+        }
+
+        if (error.message.includes('402') || error.message.includes('credits')) {
+            return "system_alert: Insufficient Credits. The OpenRouter account is out of credits.";
+        }
+
+        return "I apologize, but I am currently offline due to a connection error (" + (error.message || "Unknown") + ").";
     }
 }

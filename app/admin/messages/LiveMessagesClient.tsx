@@ -120,20 +120,9 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
         loadMessages();
     }, [activeGroupId, isDirectChat]);
 
-    const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-        if (messagesContainerRef.current) {
-            const container = messagesContainerRef.current;
-            // Scroll to bottom (max scrollTop) to see latest messages which are at the visual bottom
-            // in a flex-col-reverse layout where correct visual order is maintained.
-            container.scrollTo({ top: container.scrollHeight, behavior });
-        }
-    }, []);
-
     // Set up realtime subscription for current chat
     useEffect(() => {
-        // Skip if direct chat but no superadmin/user, or if group chat but no activeGroupId
         if (isDirectChat && (!superAdmin || !user?.id)) return;
-        if (!isDirectChat && !activeGroupId) return;
 
         console.log('Setting up realtime for:', isDirectChat ? 'direct chat' : `group ${activeGroupId}`);
 
@@ -154,7 +143,6 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                 },
                 async (payload: any) => {
                     console.log('Realtime Event:', payload.eventType, payload.new?.id || payload.old?.id);
-                    console.log('Payload details:', { table, isDirectChat, activeGroupId, payload });
 
                     if (payload.eventType === 'DELETE') {
                         setMessages(prev => prev.filter(m => m.id !== payload.old.id));
@@ -173,66 +161,71 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                         if (!isRelevant) return;
                     }
 
-                    // Avoid duplicate messages if optimistically added
-                    let exists = false;
-                    setMessages(prev => {
-                        exists = prev.some(msg => msg.id === payload.new.id ||
-                            (msg.content === payload.new.content &&
-                                msg.sender_id === payload.new.sender_id &&
-                                Math.abs(new Date(msg.created_at).getTime() - new Date(payload.new.created_at).getTime()) < 5000));
-                        return prev;
-                    });
+                    // Fetch full message with sender details
+                    const { data, error } = await supabase
+                        .from(table)
+                        .select(`
+                            *,
+                            sender:sender_id (
+                                id,
+                                full_name,
+                                avatar_url
+                            )
+                        `)
+                        .eq('id', payload.new.id)
+                        .single();
 
-                    if (!exists) {
-                        console.log('Fetching full message details for:', payload.new.id);
-                        // Fetch full message with sender details asynchronously
-                        const { data, error } = await supabase
-                            .from(table)
-                            .select(`
-                                *,
-                                sender:sender_id (
-                                    id,
-                                    full_name,
-                                    avatar_url
-                                )
-                            `)
-                            .eq('id', payload.new.id)
-                            .single();
+                    if (data && !error) {
+                        const realMessage = data as Message;
 
-                        if (data && !error) {
-                            console.log('Adding message to UI:', data.id);
-                            setMessages(current => {
-                                if (current.some(m => m.id === data.id)) return current;
-                                return [...current, data as Message];
-                            });
-                            // Smooth scroll for new messages
-                            setTimeout(() => scrollToBottom('smooth'), 100);
-                        } else {
-                            console.error('Error fetching message details:', error);
-                        }
-                    } else {
-                        console.log('Message already exists, skipping:', payload.new.id);
+                        setMessages(current => {
+                            // 1. Check if we already have this EXACT message ID (duplicate event)
+                            if (current.some(m => m.id === realMessage.id)) return current;
+
+                            // 2. Check for optimistic match to REPLACE
+                            const optimisticIndex = current.findIndex(msg =>
+                                msg.content === realMessage.content &&
+                                msg.sender_id === realMessage.sender_id &&
+                                // Optimistic IDs are usually timestamps (long numbers), real IDs are UUIDs (contain hyphens)
+                                (!msg.id.includes('-')) &&
+                                Math.abs(new Date(msg.created_at).getTime() - new Date(realMessage.created_at).getTime()) < 10000
+                            );
+
+                            if (optimisticIndex !== -1) {
+                                // Replace optimistic message with real message (preserves position)
+                                const newMessages = [...current];
+                                newMessages[optimisticIndex] = realMessage;
+                                return newMessages;
+                            }
+
+                            // 3. New message, append
+                            const newMessages = [...current, realMessage];
+                            // Sorting might be needed if events arrive out of order, but usually appending is fine for chat
+                            return newMessages;
+                        });
+
+                        setTimeout(() => scrollToBottom('smooth'), 100);
                     }
                 }
             )
-            .subscribe((status: string, err?: any) => {
+            .subscribe((status: string) => {
                 console.log(`Realtime Status (${isDirectChat ? 'Direct' : 'Group'}):`, status);
-                if (err) {
-                    console.error('Realtime subscription error:', err);
-                }
                 setRealtimeStatus(status);
-
-                // Log when successfully subscribed
-                if (status === 'SUBSCRIBED') {
-                    console.log(`✅ Successfully subscribed to ${isDirectChat ? 'direct messages' : `group ${activeGroupId}`}`);
-                }
             });
 
         return () => {
-            console.log('Cleaning up realtime subscription for:', channelId);
             supabase.removeChannel(channel);
         };
-    }, [activeGroupId, isDirectChat, user?.id, superAdmin?.id, scrollToBottom, supabase]);
+    }, [activeGroupId, isDirectChat, user?.id, superAdmin?.id]);
+
+    const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+        if (messagesContainerRef.current) {
+            const container = messagesContainerRef.current;
+            // Scroll to bottom (max scrollTop) to see latest messages which are at the visual bottom
+            // in a flex-col-reverse layout where correct visual order is maintained.
+            container.scrollTo({ top: container.scrollHeight, behavior });
+        }
+    }, []);
 
     const loadMessages = useCallback(async (silent = false) => {
         if (!activeGroupId) return;
@@ -304,9 +297,9 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
             const result = await sendDirectMessage(superAdmin.id, content);
             console.log("Direct message result:", result);
             if (result.success) {
-                // Realtime subscription will handle updating with server response
-                // Remove optimistic message - realtime will add the real one
-                setMessages(prev => prev.filter(m => m.id !== tempId));
+                // Keep optimistic message - realtime subscription will eventually replace/deduplicate it
+                // BUT we also fetch to be safe and ensure we have the real ID for actions like Delete
+                loadDirectMessages(true);
             } else {
                 setMessages(prev => prev.filter(m => m.id !== tempId));
                 setSendError(result.error || "Failed to send message");
@@ -321,9 +314,10 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
             setMessages(prev => prev.filter(m => m.id !== tempId));
             setSendError(result.error);
             setTimeout(() => setSendError(""), 3000);
+        } else {
+            // Fetch validation to ensure we have real IDs
+            loadMessages(true);
         }
-        // On success, keep the optimistic message - realtime will replace it with the real one
-        // The duplicate detection in realtime subscription will handle this properly
     };
 
     const handleEmojiClick = (emojiData: EmojiClickData) => {
@@ -337,18 +331,6 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
 
     const confirmDelete = async () => {
         if (!messageToDelete) return;
-
-        // Check if it's an optimistic message (timestamp ID) vs real message (UUID)
-        // UUIDs have hyphens, timestamps don't
-        const isOptimistic = !messageToDelete.includes('-');
-
-        if (isOptimistic) {
-            // Just remove from local state, no server call needed
-            setMessages(prev => prev.filter(msg => msg.id !== messageToDelete));
-            setShowDeleteModal(false);
-            setMessageToDelete(null);
-            return;
-        }
 
         const result = isDirectChat
             ? await deleteDirectMessage(messageToDelete)

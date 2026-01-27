@@ -8,12 +8,12 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const openrouter = createOpenAI({
-    baseURL: 'https://openrouter.ai/api/v1',
+const groq = createOpenAI({
+    baseURL: 'https://api.groq.com/openai/v1',
     apiKey: process.env.OPENAI_API_KEY,
 });
 
-const defaultModel = openrouter('google/gemini-2.0-flash-001');
+const defaultModel = groq('llama-3.3-70b-versatile');
 
 async function testAiResponse() {
     console.log("1. Finding Superadmin...");
