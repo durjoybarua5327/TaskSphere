@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useModal } from "@/components/providers/modal-provider";
 import { sendMessage, deleteMessage, toggleAiForUser, clearAllMessages } from "../actions";
+import { MessageCard } from "./message-card";
 import { formatDistanceToNow } from "date-fns";
 import {
     Send,
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase";
+import { TypingIndicator, AITypingIndicator } from "@/components/typing-indicator";
 
 interface Message {
     id: string;
@@ -30,6 +32,21 @@ interface Message {
     receiver_id: string;
     is_ai_response?: boolean;
     created_at: string;
+    type?: 'direct' | 'group_request';
+    // Group Request fields
+    sender_name?: string;
+    sender_email?: string;
+    requested_group_name?: string;
+    group_description?: string;
+    justification?: string;
+    expected_members_count?: number;
+    subject_area?: string;
+    status?: string;
+    creation_method?: string;
+    ai_conversation?: any;
+    ai_summary?: string;
+    admin_response?: string;
+    responded_at?: string;
     sender?: {
         id: string;
         full_name: string | null;
@@ -68,6 +85,8 @@ export function MessagesClient({ conversations: initialConversations, currentUse
     const [isLoading, setIsLoading] = useState(false);
     const [isSending, setIsSending] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
+    const [isAiProcessing, setIsAiProcessing] = useState(false);
+    const [typingUsers, setTypingUsers] = useState<Record<string, { name: string, timestamp: number }>>({});
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
     const supabase = createClient();
@@ -92,6 +111,13 @@ export function MessagesClient({ conversations: initialConversations, currentUse
             .on(
                 'postgres_changes',
                 { event: 'INSERT', schema: 'public', table: 'messages' },
+                () => {
+                    router.refresh();
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'group_creation_messages' },
                 () => {
                     router.refresh();
                 }
@@ -151,6 +177,40 @@ export function MessagesClient({ conversations: initialConversations, currentUse
                     }
                 }
             )
+            .on(
+                'postgres_changes',
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'group_creation_messages',
+                },
+                async (payload: any) => {
+                    const isRelevant = payload.new?.sender_id === selectedConversation.userId ||
+                        payload.old?.sender_id === selectedConversation.userId;
+
+                    if (isRelevant) {
+                        loadMessages(selectedConversation.userId, true);
+                    }
+                }
+            )
+            .on(
+                'broadcast',
+                { event: 'typing' },
+                (payload: { payload: { userId: string, userName: string, isTyping: boolean } }) => {
+                    const { userId: typingUserId, userName, isTyping } = payload.payload;
+                    if (typingUserId === currentUserId) return;
+
+                    setTypingUsers(prev => {
+                        const next = { ...prev };
+                        if (isTyping) {
+                            next[typingUserId] = { name: userName, timestamp: Date.now() };
+                        } else {
+                            delete next[typingUserId];
+                        }
+                        return next;
+                    });
+                }
+            )
             .subscribe((status: string) => {
                 console.log('Realtime Status:', status);
                 if (status === 'CHANNEL_ERROR') {
@@ -161,7 +221,26 @@ export function MessagesClient({ conversations: initialConversations, currentUse
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [selectedConversation?.userId, currentUserId, supabase]);
+    }, [selectedConversation, currentUserId, supabase]);
+
+    // Cleanup typing users periodically
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setTypingUsers(prev => {
+                const now = Date.now();
+                const next = { ...prev };
+                let changed = false;
+                Object.entries(next).forEach(([id, data]) => {
+                    if (now - data.timestamp > 3000) {
+                        delete next[id];
+                        changed = true;
+                    }
+                });
+                return changed ? next : prev;
+            });
+        }, 1000);
+        return () => clearInterval(interval);
+    }, []);
 
     const loadMessages = async (userId: string, silent = false) => {
         if (!silent) setIsLoading(true);
@@ -207,7 +286,9 @@ export function MessagesClient({ conversations: initialConversations, currentUse
         setNewMessage("");
 
         try {
+            setIsAiProcessing(selectedConversation.user?.ai_enabled !== false);
             const result = await sendMessage(selectedConversation.userId, content);
+            setIsAiProcessing(false);
 
             if (!result.success) {
                 setMessages(prev => prev.filter(m => m.id !== tempId));
@@ -440,6 +521,31 @@ export function MessagesClient({ conversations: initialConversations, currentUse
                                             onDelete={() => handleDeleteMessage(message)}
                                         />
                                     ))}
+                                    {isAiProcessing && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="flex justify-start mb-6"
+                                        >
+                                            <div className="flex gap-4 items-start">
+                                                <div className="w-10 h-10 rounded-[1.25rem] bg-purple-900 flex items-center justify-center text-white shadow-lg">
+                                                    <Sparkles className="w-5 h-5" />
+                                                </div>
+                                                <AITypingIndicator />
+                                            </div>
+                                        </motion.div>
+                                    )}
+
+                                    {Object.entries(typingUsers).map(([userId, data]) => (
+                                        <motion.div
+                                            key={`typing-${userId}`}
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="flex justify-start mb-6"
+                                        >
+                                            <TypingIndicator label={`${data.name} is typing`} />
+                                        </motion.div>
+                                    ))}
                                     <div ref={messagesEndRef} className="h-4" />
                                 </div>
                             )}
@@ -469,7 +575,21 @@ export function MessagesClient({ conversations: initialConversations, currentUse
                                     <input
                                         type="text"
                                         value={newMessage}
-                                        onChange={(e) => setNewMessage(e.target.value)}
+                                        onChange={(e) => {
+                                            setNewMessage(e.target.value);
+                                            if (selectedConversation?.userId) {
+                                                const channel = supabase.channel(`direct_messages_${selectedConversation.userId}`);
+                                                channel.send({
+                                                    type: 'broadcast',
+                                                    event: 'typing',
+                                                    payload: {
+                                                        userId: currentUserId,
+                                                        userName: 'Superadmin',
+                                                        isTyping: true
+                                                    }
+                                                });
+                                            }
+                                        }}
                                         placeholder="Type your manual response..."
                                         className="w-full pl-8 pr-24 py-6 bg-slate-50 border border-slate-100 rounded-[2.5rem] text-sm font-medium text-slate-700 placeholder:text-slate-300 focus:bg-white focus:ring-8 ring-[#00897B]/5 outline-none transition-all shadow-inner"
                                         disabled={isSending}
@@ -545,22 +665,32 @@ function MessageBubble({
                 </div>
 
                 <div
-                    className={`relative px-6 py-4 rounded-[1.75rem] shadow-sm transition-all duration-300 ${message.is_ai_response
-                        ? "bg-purple-900 text-white shadow-xl shadow-purple-200/50"
-                        : isOwn
-                            ? "bg-white text-slate-900 border border-slate-100"
-                            : "bg-[#00897B] text-white shadow-xl shadow-[#00897B]/20"
+                    className={`relative px-6 py-4 rounded-[1.75rem] shadow-sm transition-all duration-300 ${message.type === 'group_request'
+                        ? ""
+                        : message.is_ai_response
+                            ? "bg-purple-900 text-white shadow-xl shadow-purple-200/50"
+                            : isOwn
+                                ? "bg-white text-slate-900 border border-slate-100"
+                                : "bg-[#00897B] text-white shadow-xl shadow-[#00897B]/20"
                         }`}
                 >
-                    {message.is_ai_response && (
-                        <div className="flex items-center gap-2 mb-3">
-                            <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center">
-                                <Sparkles className="w-3.5 h-3.5 text-white" />
-                            </div>
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em]">Synthesized Intelligence</span>
+                    {message.type === 'group_request' ? (
+                        <div className="w-[450px] max-w-full">
+                            <MessageCard message={message as any} />
                         </div>
+                    ) : (
+                        <>
+                            {message.is_ai_response && (
+                                <div className="flex items-center gap-2 mb-3">
+                                    <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center">
+                                        <Sparkles className="w-3.5 h-3.5 text-white" />
+                                    </div>
+                                    <span className="text-[10px] font-black uppercase tracking-[0.2em]">Synthesized Intelligence</span>
+                                </div>
+                            )}
+                            <p className="text-sm font-medium leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                        </>
                     )}
-                    <p className="text-sm font-medium leading-relaxed whitespace-pre-wrap">{message.content}</p>
 
                     {/* Interaction Tools */}
                     {isOwn && (

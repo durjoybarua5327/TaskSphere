@@ -613,9 +613,8 @@ export async function getConversations() {
 
     const supabase = createAdminClient();
 
-    // Fetch all messages where current super admin is involved
-    // Or just all direct messages if we want super admin to see all support chats
-    const { data, error } = await supabase
+    // 1. Fetch all direct messages
+    const { data: directData, error: directError } = await supabase
         .from("messages")
         .select(`
             *,
@@ -638,14 +637,28 @@ export async function getConversations() {
         `)
         .order("created_at", { ascending: false });
 
-    if (error) return { error: error.message, conversations: [] };
+    if (directError) {
+        console.error("Error fetching direct conversations:", directError);
+        return { error: directError.message, conversations: [] };
+    }
 
-    // Group by the "student" (the non-superadmin)
+    // 2. Fetch all group creation requests (to include users who requested groups)
+    const { data: groupData, error: groupError } = await supabase
+        .from("group_creation_messages")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+    if (groupError) {
+        console.error("Error fetching group requests for conversations:", groupError);
+    }
+
+    // Map to group by user
     const conversationMap = new Map();
-    data?.forEach(msg => {
+
+    // Process direct messages
+    directData?.forEach(msg => {
         let otherUser;
 
-        // Logical check: Identify the non-superadmin in the conversation
         const isSenderSuper = msg.sender?.is_super_admin;
         const isReceiverSuper = msg.receiver?.is_super_admin;
 
@@ -654,7 +667,6 @@ export async function getConversations() {
         } else if (!isSenderSuper && isReceiverSuper) {
             otherUser = msg.sender;
         } else {
-            // Fallback for super-to-super or student-to-student (if any)
             otherUser = msg.sender_id === userId ? msg.receiver : msg.sender;
         }
 
@@ -664,11 +676,53 @@ export async function getConversations() {
             conversationMap.set(otherUser.id, {
                 userId: otherUser.id,
                 user: otherUser,
-                lastMessage: msg,
+                lastMessage: { ...msg, type: 'direct' },
                 unreadCount: (msg.receiver_id === userId && !msg.is_read) ? 1 : 0,
             });
         } else if (msg.receiver_id === userId && !msg.is_read) {
             conversationMap.get(otherUser.id).unreadCount += 1;
+        }
+    });
+
+    // Process group requests (add users if they don't exist in map)
+    groupData?.forEach(req => {
+        if (!conversationMap.has(req.sender_id)) {
+            // We need to fetch basic user info for these users if they weren't in direct messages
+            // But for now, we'll just use the name/email from the request if missing
+            conversationMap.set(req.sender_id, {
+                userId: req.sender_id,
+                user: {
+                    id: req.sender_id,
+                    full_name: req.sender_name,
+                    email: req.sender_email,
+                    avatar_url: null,
+                    ai_enabled: true
+                },
+                lastMessage: {
+                    id: req.id,
+                    content: `Group Request: ${req.requested_group_name}`,
+                    created_at: req.created_at,
+                    type: 'group_request'
+                },
+                unreadCount: req.status === 'pending' ? 1 : 0
+            });
+        } else {
+            // If already in map, update last message if the group request is newer
+            const existing = conversationMap.get(req.sender_id);
+            const reqTime = new Date(req.created_at).getTime();
+            const lastTime = new Date(existing.lastMessage.created_at).getTime();
+
+            if (reqTime > lastTime) {
+                existing.lastMessage = {
+                    id: req.id,
+                    content: `Group Request: ${req.requested_group_name}`,
+                    created_at: req.created_at,
+                    type: 'group_request'
+                };
+            }
+            if (req.status === 'pending') {
+                existing.unreadCount += 1;
+            }
         }
     });
 

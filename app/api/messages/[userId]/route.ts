@@ -20,8 +20,8 @@ export async function GET(
 
         const supabase = createAdminClient();
 
-        // Fetch messages between current user and the specified user
-        const { data: messages, error } = await supabase
+        // 1. Fetch direct messages
+        const { data: directMessages, error: directError } = await supabase
             .from("messages")
             .select(`
                 *,
@@ -36,12 +36,48 @@ export async function GET(
             .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${currentUserId})`)
             .order("created_at", { ascending: true });
 
-        if (error) {
-            console.error("Error fetching messages:", error);
+        if (directError) {
+            console.error("Error fetching direct messages:", directError);
             return new NextResponse("Internal Error", { status: 500 });
         }
 
-        return NextResponse.json({ messages: messages || [] });
+        // 2. Fetch group creation requests for this user
+        const { data: groupRequests, error: groupError } = await supabase
+            .from("group_creation_messages")
+            .select("*")
+            .eq("sender_id", otherUserId)
+            .order("created_at", { ascending: true });
+
+        if (groupError) {
+            console.error("Error fetching group requests:", groupError);
+            // Don't fail the whole request if group requests fail
+        }
+
+        // 3. Merge and sort
+        const formattedDirectMessages = (directMessages || []).map(m => ({
+            ...m,
+            type: 'direct'
+        }));
+
+        const formattedGroupRequests = (groupRequests || []).map(m => ({
+            ...m,
+            type: 'group_request',
+            // Map common fields for sorting
+            content: `Group Creation Request: ${m.requested_group_name}`,
+            sender: {
+                id: m.sender_id,
+                full_name: m.sender_name,
+                email: m.sender_email,
+                avatar_url: null,
+                is_super_admin: false
+            }
+        }));
+
+        const allMessages = [...formattedDirectMessages, ...formattedGroupRequests].sort((a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+
+        return NextResponse.json({ messages: allMessages });
     } catch (error) {
         console.error("[MESSAGES_GET]", error);
         return new NextResponse("Internal Error", { status: 500 });

@@ -26,6 +26,7 @@ import { useUser } from "@clerk/nextjs";
 import { useModal } from "@/components/providers/modal-provider";
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import { Sparkles, Bot, Info } from "lucide-react";
+import { TypingIndicator, AITypingIndicator } from "@/components/typing-indicator";
 
 interface Message {
     id: string;
@@ -75,6 +76,8 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
     const [isClearingHistory, setIsClearingHistory] = useState(false);
     const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
+    const [isAiProcessing, setIsAiProcessing] = useState(false);
+    const [typingUsers, setTypingUsers] = useState<Record<string, { name: string, timestamp: number }>>({});
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const [supabase] = useState(() => createClient());
@@ -208,6 +211,24 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                     }
                 }
             )
+            .on(
+                'broadcast',
+                { event: 'typing' },
+                (payload: { payload: { userId: string, userName: string, isTyping: boolean } }) => {
+                    const { userId: typingUserId, userName, isTyping } = payload.payload;
+                    if (typingUserId === user?.id) return;
+
+                    setTypingUsers(prev => {
+                        const next = { ...prev };
+                        if (isTyping) {
+                            next[typingUserId] = { name: userName, timestamp: Date.now() };
+                        } else {
+                            delete next[typingUserId];
+                        }
+                        return next;
+                    });
+                }
+            )
             .subscribe((status: string) => {
                 console.log(`Realtime Status (${isDirectChat ? 'Direct' : 'Group'}):`, status);
                 setRealtimeStatus(status);
@@ -218,14 +239,35 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
         };
     }, [activeGroupId, isDirectChat, user?.id, superAdmin?.id]);
 
+    // Cleanup typing users periodically
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setTypingUsers(prev => {
+                const now = Date.now();
+                const next = { ...prev };
+                let changed = false;
+                Object.entries(next).forEach(([id, data]) => {
+                    if (now - data.timestamp > 3000) {
+                        delete next[id];
+                        changed = true;
+                    }
+                });
+                return changed ? next : prev;
+            });
+        }, 1000);
+        return () => clearInterval(interval);
+    }, []);
+
     const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-        if (messagesContainerRef.current) {
-            const container = messagesContainerRef.current;
-            // Scroll to bottom (max scrollTop) to see latest messages which are at the visual bottom
-            // in a flex-col-reverse layout where correct visual order is maintained.
-            container.scrollTo({ top: container.scrollHeight, behavior });
+        if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior, block: 'end' });
         }
     }, []);
+
+    // Scroll to bottom whenever messages or typing state changes
+    useEffect(() => {
+        scrollToBottom('smooth');
+    }, [messages, isAiProcessing, typingUsers, scrollToBottom]);
 
     const loadMessages = useCallback(async (silent = false) => {
         if (!activeGroupId) return;
@@ -294,7 +336,9 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
 
         if (isDirectChat && superAdmin) {
             console.log("Sending direct message to SuperAdmin AI...");
+            setIsAiProcessing(true);
             const result = await sendDirectMessage(superAdmin.id, content);
+            setIsAiProcessing(false);
             console.log("Direct message result:", result);
             if (result.success) {
                 // Keep optimistic message - realtime subscription will eventually replace/deduplicate it
@@ -585,96 +629,126 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                         </div>
 
                         {/* Messages */}
-                        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col-reverse gap-4">
-                            <div ref={messagesEndRef} />
+                        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col gap-4">
                             {loading ? (
-                                <div className="flex justify-center items-center h-full flex-col-reverse">
+                                <div className="flex justify-center items-center h-full">
                                     <div className="text-slate-400 text-sm">Loading security channel...</div>
                                 </div>
                             ) : messages.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-4 flex-col-reverse">
+                                <div className="flex flex-col items-center justify-center h-full text-slate-400 space-y-4">
+                                    <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center">
+                                        <Bot className="w-8 h-8 text-slate-300" />
+                                    </div>
                                     <div className="text-center max-w-xs px-6">
                                         <p className="text-sm font-bold mb-1 uppercase tracking-tight">Secure Channel Established</p>
                                         <p className="text-xs text-slate-400">Ask the AI for help with group creation or directly message the Superadmin.</p>
                                     </div>
-                                    <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center">
-                                        <Bot className="w-8 h-8 text-slate-300" />
-                                    </div>
                                 </div>
                             ) : (
-                                [...messages].reverse().map((msg) => {
-                                    const isMe = msg.sender_id === user?.id;
-                                    const isAi = msg.is_ai_response || (isDirectChat && !isMe);
-                                    return (
+                                <>
+                                    {/* Messages (Standard Order) */}
+                                    {messages.map((msg) => {
+                                        const isMe = msg.sender_id === user?.id;
+                                        const isAi = msg.is_ai_response || (isDirectChat && !isMe);
+                                        return (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 10 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                key={msg.id}
+                                                className={`flex gap-3 ${isMe ? "flex-row-reverse" : "flex-row"}`}
+                                            >
+                                                <div className="shrink-0">
+                                                    {isAi ? (
+                                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white shadow-md ring-2 ring-white">
+                                                            <Sparkles className="w-5 h-5" />
+                                                        </div>
+                                                    ) : msg.sender?.avatar_url ? (
+                                                        <Link href={`${profileBasePath}?userId=${msg.sender.id}`} className="block transition-transform hover:scale-105">
+                                                            <img
+                                                                src={msg.sender.avatar_url}
+                                                                alt={msg.sender.full_name}
+                                                                className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-md hover:ring-indigo-400 transition-all cursor-pointer"
+                                                            />
+                                                        </Link>
+                                                    ) : (
+                                                        <Link href={`${profileBasePath}?userId=${msg.sender?.id}`} className="block transition-transform hover:scale-105">
+                                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-white hover:ring-indigo-400 transition-all">
+                                                                {getInitials(msg.sender?.full_name || 'U')}
+                                                            </div>
+                                                        </Link>
+                                                    )}
+                                                </div>
+
+                                                <div className={`flex flex-col max-w-[70%] md:max-w-[60%] ${isMe ? "items-end" : "items-start"}`}>
+                                                    <div className={`flex items-center gap-2 mb-1 px-1 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
+                                                        <span className="text-xs font-bold text-slate-700">
+                                                            {isAi ? (
+                                                                'AI Assistant'
+                                                            ) : (
+                                                                <Link href={`${profileBasePath}?userId=${msg.sender?.id}`} className="hover:text-indigo-600 hover:underline transition-colors">
+                                                                    {isMe ? 'You' : msg.sender?.full_name || 'User'}
+                                                                </Link>
+                                                            )}
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400">
+                                                            {formatTime(msg.created_at)}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="relative group/message">
+                                                        <div className={`px-4 py-2.5 rounded-2xl text-sm font-medium leading-relaxed shadow-sm ${isMe
+                                                            ? "bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-tr-md"
+                                                            : isAi
+                                                                ? "bg-gradient-to-br from-purple-500 to-indigo-600 text-white rounded-tl-md"
+                                                                : "bg-slate-100 text-slate-700 rounded-tl-md"
+                                                            }`}>
+                                                            {msg.content}
+                                                        </div>
+
+                                                        {/* Delete Button (only for own messages) */}
+                                                        {isMe && (
+                                                            <button
+                                                                onClick={() => handleDeleteMessage(msg.id)}
+                                                                className="absolute -top-2 -right-2 opacity-0 group-hover/message:opacity-100 transition-opacity w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-lg"
+                                                                title="Delete message"
+                                                            >
+                                                                <Trash2 className="w-3 h-3" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        );
+                                    })}
+
+                                    {/* Typing indicators (at bottom in standard flex-col) */}
+                                    {isAiProcessing && (
                                         <motion.div
                                             initial={{ opacity: 0, y: 10 }}
                                             animate={{ opacity: 1, y: 0 }}
-                                            key={msg.id}
-                                            className={`flex gap-3 ${isMe ? "flex-row-reverse" : "flex-row"}`}
+                                            className="flex justify-start mb-2"
                                         >
-                                            <div className="shrink-0">
-                                                {isAi ? (
-                                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white shadow-md ring-2 ring-white">
-                                                        <Sparkles className="w-5 h-5" />
-                                                    </div>
-                                                ) : msg.sender?.avatar_url ? (
-                                                    <Link href={`${profileBasePath}?userId=${msg.sender.id}`} className="block transition-transform hover:scale-105">
-                                                        <img
-                                                            src={msg.sender.avatar_url}
-                                                            alt={msg.sender.full_name}
-                                                            className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-md hover:ring-indigo-400 transition-all cursor-pointer"
-                                                        />
-                                                    </Link>
-                                                ) : (
-                                                    <Link href={`${profileBasePath}?userId=${msg.sender?.id}`} className="block transition-transform hover:scale-105">
-                                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-md ring-2 ring-white hover:ring-indigo-400 transition-all">
-                                                            {getInitials(msg.sender?.full_name || 'U')}
-                                                        </div>
-                                                    </Link>
-                                                )}
-                                            </div>
-
-                                            <div className={`flex flex-col max-w-[70%] md:max-w-[60%] ${isMe ? "items-end" : "items-start"}`}>
-                                                <div className={`flex items-center gap-2 mb-1 px-1 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
-                                                    <span className="text-xs font-bold text-slate-700">
-                                                        {isAi ? (
-                                                            'AI Assistant'
-                                                        ) : (
-                                                            <Link href={`${profileBasePath}?userId=${msg.sender?.id}`} className="hover:text-indigo-600 hover:underline transition-colors">
-                                                                {isMe ? 'You' : msg.sender?.full_name || 'User'}
-                                                            </Link>
-                                                        )}
-                                                    </span>
-                                                    <span className="text-[10px] text-slate-400">
-                                                        {formatTime(msg.created_at)}
-                                                    </span>
+                                            <div className="flex gap-3 items-start">
+                                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white shadow-md">
+                                                    <Sparkles className="w-5 h-5" />
                                                 </div>
-
-                                                <div className="relative group/message">
-                                                    <div className={`px-4 py-2.5 rounded-2xl text-sm font-medium leading-relaxed shadow-sm ${isMe
-                                                        ? "bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-tr-md"
-                                                        : isAi
-                                                            ? "bg-gradient-to-br from-purple-500 to-indigo-600 text-white rounded-tl-md"
-                                                            : "bg-slate-100 text-slate-700 rounded-tl-md"
-                                                        }`}>
-                                                        {msg.content}
-                                                    </div>
-
-                                                    {/* Delete Button (only for own messages) */}
-                                                    {isMe && (
-                                                        <button
-                                                            onClick={() => handleDeleteMessage(msg.id)}
-                                                            className="absolute -top-2 -right-2 opacity-0 group-hover/message:opacity-100 transition-opacity w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-lg"
-                                                            title="Delete message"
-                                                        >
-                                                            <Trash2 className="w-3 h-3" />
-                                                        </button>
-                                                    )}
-                                                </div>
+                                                <AITypingIndicator />
                                             </div>
                                         </motion.div>
-                                    );
-                                })
+                                    )}
+
+                                    {Object.entries(typingUsers).map(([userId, data]) => (
+                                        <motion.div
+                                            key={`typing-${userId}`}
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            className="flex justify-start mb-2"
+                                        >
+                                            <TypingIndicator label={`${data.name} is typing`} />
+                                        </motion.div>
+                                    ))}
+                                    <div ref={messagesEndRef} className="h-2 shrink-0" />
+                                </>
                             )}
                         </div>
 
@@ -744,6 +818,18 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                                             if (e.key === 'Enter' && !e.shiftKey) {
                                                 e.preventDefault();
                                                 handleSendMessage(e);
+                                            } else if (user?.id && activeGroupId) {
+                                                // Broadcast typing for groups
+                                                const channel = supabase.channel(`group_messages_${activeGroupId}`);
+                                                channel.send({
+                                                    type: 'broadcast',
+                                                    event: 'typing',
+                                                    payload: {
+                                                        userId: user.id,
+                                                        userName: user.fullName || 'User',
+                                                        isTyping: true
+                                                    }
+                                                });
                                             }
                                         }}
                                     />
@@ -773,7 +859,7 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                                     <div>
                                         <div className="flex items-center gap-2">
                                             <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">
-                                                {activeGroup.name}
+                                                {activeGroup?.name}
                                             </h3>
                                             <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-widest ${realtimeStatus === 'SUBSCRIBED'
                                                 ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
@@ -786,9 +872,9 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                                                {activeGroup.members?.[0]?.count || 0} Members
+                                                {activeGroup?.members?.[0]?.count || 0} Members
                                             </p>
-                                            {activeGroup.admin_only_chat && (
+                                            {activeGroup?.admin_only_chat && (
                                                 <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-full">
                                                     <Shield className="w-2.5 h-2.5 text-amber-600" />
                                                     <span className="text-[9px] font-black text-amber-600 uppercase">Admin Only</span>
@@ -814,12 +900,12 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                                 <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
                                     <button
                                         onClick={handleToggleAdminOnly}
-                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${activeGroup.admin_only_chat
+                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${activeGroup?.admin_only_chat
                                             ? 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100'
                                             : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
                                             }`}
                                     >
-                                        {activeGroup.admin_only_chat ? (
+                                        {activeGroup?.admin_only_chat ? (
                                             <>
                                                 <Lock className="w-3 h-3" />
                                                 Admin Only Mode
@@ -956,16 +1042,30 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                                     <textarea
                                         value={messageInput}
                                         onChange={(e) => setMessageInput(e.target.value)}
-                                        placeholder={activeGroup.admin_only_chat && !isGroupAdmin()
+                                        placeholder={activeGroup?.admin_only_chat && !isGroupAdmin()
                                             ? "Only admins can send messages..."
-                                            : `Message ${activeGroup.name}...`}
-                                        disabled={activeGroup.admin_only_chat && !isGroupAdmin()}
+                                            : `Message ${activeGroup?.name}...`}
+                                        disabled={activeGroup?.admin_only_chat && !isGroupAdmin()}
                                         className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-slate-700 placeholder:text-slate-400 py-3 max-h-32 resize-none disabled:opacity-50"
                                         rows={1}
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter' && !e.shiftKey) {
                                                 e.preventDefault();
                                                 handleSendMessage(e);
+                                            } else if (user?.id) {
+                                                // Broadcast typing for groups
+                                                if (activeGroupId) {
+                                                    const channel = supabase.channel(`group_messages_${activeGroupId}`);
+                                                    channel.send({
+                                                        type: 'broadcast',
+                                                        event: 'typing',
+                                                        payload: {
+                                                            userId: user.id,
+                                                            userName: user.fullName || 'User',
+                                                            isTyping: true
+                                                        }
+                                                    });
+                                                }
                                             }
                                         }}
                                     />
@@ -973,13 +1073,13 @@ export function LiveMessagesClient({ initialGroups, superAdmin, profileBasePath 
                                         type="button"
                                         onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                                         className="p-2 text-slate-400 hover:text-emerald-600 transition-colors disabled:opacity-50"
-                                        disabled={activeGroup.admin_only_chat && !isGroupAdmin()}
+                                        disabled={activeGroup?.admin_only_chat && !isGroupAdmin()}
                                     >
                                         <Smile className="w-5 h-5" />
                                     </button>
                                     <button
                                         type="submit"
-                                        disabled={!messageInput.trim() || (activeGroup.admin_only_chat && !isGroupAdmin())}
+                                        disabled={!messageInput.trim() || (activeGroup?.admin_only_chat && !isGroupAdmin())}
                                         className="p-3 bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-2xl hover:shadow-lg disabled:opacity-50 disabled:hover:shadow-none transition-all shadow-md active:scale-95"
                                     >
                                         <Send className="w-4 h-4" />

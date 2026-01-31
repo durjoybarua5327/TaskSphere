@@ -543,7 +543,7 @@ END $$;
 DO $$
 DECLARE
     tbl_name TEXT;
-    table_list TEXT[] := ARRAY['posts', 'likes', 'comments', 'notifications', 'messages', 'group_messages'];
+    table_list TEXT[] := ARRAY['posts', 'likes', 'comments', 'notifications', 'messages', 'group_messages', 'group_creation_messages'];
 BEGIN
     FOREACH tbl_name IN ARRAY table_list LOOP
         IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename = tbl_name AND schemaname = 'public') THEN

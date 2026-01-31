@@ -19,12 +19,15 @@ import {
     Shield,
     Trash,
     Settings,
-    Search
+    Search,
+    Sparkles,
+    Bot
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CreateTaskModal } from "./_components/create-task-modal";
 import { EditGroupModal } from "./_components/edit-group-modal";
+import { GroupAIChat } from "./_components/group-ai-chat";
 import {
     createTask,
     updateTask,
@@ -45,7 +48,7 @@ interface GroupDetailsClientProps {
 }
 
 export function GroupDetailsClient({ initialGroup, initialMembers, initialTasks, initialRequests, currentUserId }: GroupDetailsClientProps) {
-    const [activeTab, setActiveTab] = useState<'members' | 'tasks'>('members');
+    const [activeTab, setActiveTab] = useState<'members' | 'tasks' | 'aichat'>('members');
 
     // Task States
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -305,6 +308,7 @@ export function GroupDetailsClient({ initialGroup, initialMembers, initialTasks,
                 {[
                     { id: 'members', label: 'Members', icon: Users },
                     { id: 'tasks', label: 'Tasks & Submissions', icon: ClipboardList },
+                    { id: 'aichat', label: 'Group AI Assistant', icon: Sparkles },
                 ].map((tab) => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
@@ -533,6 +537,21 @@ export function GroupDetailsClient({ initialGroup, initialMembers, initialTasks,
                                 ))}
                             </div>
                         )}
+                    </motion.div>
+                )}
+
+                {activeTab === 'aichat' && (
+                    <motion.div
+                        key="aichat"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="space-y-6"
+                    >
+                        <GroupAIChat
+                            groupId={initialGroup.id}
+                            groupName={initialGroup.name}
+                        />
                     </motion.div>
                 )}
             </AnimatePresence>

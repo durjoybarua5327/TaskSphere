@@ -5,6 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { createNotification } from "@/app/student/actions";
 import { uploadBase64Image } from "@/lib/upload-image";
+import { generateAiResponse } from "@/lib/ai-service";
 
 // Helper to check if user has admin rights for a group
 export async function verifyGroupAdminAccess(userId: string, groupId: string) {
@@ -1218,4 +1219,141 @@ export async function getTaskForStudent(taskId: string) {
     if (!membership) return { error: "Permission denied", task: null };
 
     return { task };
+}
+
+export async function chatWithGroupAi(groupId: string, userPrompt: string, history: any[] = []) {
+    const { userId: currentUserId } = await auth();
+    if (!currentUserId) return { error: "Not authenticated", success: false };
+
+    const { authorized } = await verifyGroupAdminAccess(currentUserId, groupId);
+    if (!authorized) return { error: "Access denied", success: false };
+
+    const supabase = createAdminClient();
+
+    // 1. Fetch Group Data
+    const { data: group } = await supabase
+        .from("groups")
+        .select("*")
+        .eq("id", groupId)
+        .single();
+
+    // 2. Fetch Members
+    const { data: members } = await supabase
+        .from("group_members")
+        .select(`
+            id,
+            role,
+            user:user_id (id, full_name, email)
+        `)
+        .eq("group_id", groupId);
+
+    // 3. Fetch Tasks and Submissions
+    const { data: tasks } = await supabase
+        .from("tasks")
+        .select(`
+            id,
+            title,
+            description,
+            deadline,
+            max_score,
+            submissions (
+                id,
+                student_id,
+                submitted_at,
+                content,
+                scores (
+                    score_value,
+                    feedback
+                )
+            )
+        `)
+        .eq("group_id", groupId);
+
+    if (!group || !members || !tasks) {
+        return { error: "Failed to gather group data for analysis", success: false };
+    }
+
+    // Construct the context string
+    let context = `DATA CONTEXT FOR GROUP: ${group.name}\n\n`;
+
+    context += "MEMBERS:\n";
+    members.forEach((m: any) => {
+        const user = Array.isArray(m.user) ? m.user[0] : m.user;
+        context += `- ${user?.full_name || 'N/A'} (${user?.email || 'N/A'}), Role: ${m.role}, ID: ${user?.id || 'N/A'}\n`;
+    });
+
+    context += "\nTASKS AND SUBMISSIONS:\n";
+    tasks.forEach((t: any) => {
+        context += `Task: ${t.title} (Max Score: ${t.max_score}, Deadline: ${t.deadline || 'None'})\n`;
+        context += `Total Submissions: ${t.submissions?.length || 0}\n`;
+
+        if (t.submissions && t.submissions.length > 0) {
+            t.submissions.forEach((s: any) => {
+                const member = members.find((m: any) => {
+                    const user = Array.isArray(m.user) ? m.user[0] : m.user;
+                    return user?.id === s.student_id;
+                });
+                const user = Array.isArray(member?.user) ? member.user[0] : member?.user;
+                const score = s.scores?.[0]?.score_value ?? "Not Graded";
+                context += `  - Submitted by: ${user?.full_name || 'Unknown'} (${user?.email || 'N/A'}), Score: ${score}, Date: ${new Date(s.submitted_at).toLocaleDateString()}\n`;
+            });
+        }
+        context += "\n";
+    });
+
+    const studentStats = members.filter((m: any) => m.role === 'student').map((m: any) => {
+        const user = Array.isArray(m.user) ? m.user[0] : m.user;
+        const studentTasks = tasks.map((t: any) => {
+            const sub = t.submissions.find((s: any) => s.student_id === user?.id);
+            return {
+                title: t.title,
+                submitted: !!sub,
+                score: sub?.scores?.[0]?.score_value ?? 0
+            };
+        });
+        const totalScore = studentTasks.reduce((sum, t) => sum + t.score, 0);
+        const submittedCount = studentTasks.filter(t => t.submitted).length;
+        return {
+            name: user?.full_name || 'N/A',
+            email: user?.email || 'N/A',
+            totalScore,
+            submittedCount,
+            totalTasks: tasks.length
+        };
+    });
+
+    context += "\nSTUDENT PERFORMANCE SUMMARY:\n";
+    studentStats.forEach(s => {
+        context += `- ${s.name}: ${s.submittedCount}/${s.totalTasks} tasks submitted, Total Score: ${s.totalScore}\n`;
+    });
+
+    const systemPrompt = `
+        You are the Group Management AI for the group "${group.name}". 
+        Your job is to help the Group Admin (who is currently chatting with you) manage their students and tasks.
+        
+        You have direct access to the following group data:
+        ${context}
+        
+        INSTRUCTIONS:
+        1. Always be professional and data-driven.
+        2. If the admin asks about a specific student by name or email, use the data provided above to answer accurately.
+        3. If asked to rank students, do it based on total scores or submission counts.
+        4. If asked about task completion percentages, calculate them based on the total members and submissions.
+        5. If you don't have certain data, state it clearly.
+        6. Do NOT invent data. Only use what is provided in the context.
+        7. Use Markdown for formatting tables or bullet points to make info clear.
+        8. You can also provide suggestions for low-performing students (those with few submissions or low scores).
+    `;
+
+    try {
+        const response = await generateAiResponse(userPrompt, [
+            { role: 'system', content: systemPrompt },
+            ...history
+        ]);
+
+        return { success: true, response };
+    } catch (err: any) {
+        console.error("Group AI Error:", err);
+        return { error: err.message || "AI service is currently unavailable", success: false };
+    }
 }
