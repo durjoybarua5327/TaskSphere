@@ -76,11 +76,13 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
     }
 
     // Ensure profile has required fields for the interface
-    const completeProfile = {
+    const completeProfile = isOwnProfile ? {
         ...profile,
         email: user?.emailAddresses[0]?.emailAddress || profile.email,
         full_name: profile.full_name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
         avatar_url: profile.avatar_url || user?.imageUrl
+    } : {
+        ...profile
     };
 
     return <StudentProfileClient key={completeProfile.id} profile={completeProfile} posts={posts} currentUserId={userId} isOwnProfile={isOwnProfile} />;
