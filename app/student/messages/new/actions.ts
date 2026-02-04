@@ -4,7 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { createClient } from "@/lib/supabase-server";
 import { revalidatePath } from "next/cache";
 import { generateText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { createGroq } from "@ai-sdk/groq";
 
 // Manual request submission
 export async function submitManualRequest({
@@ -177,8 +177,12 @@ export async function sendAIMessage(sessionId: string, userMessage: string) {
         };
 
         try {
+            const groq = createGroq({
+                apiKey: process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY
+            });
+
             const { text: summary } = await generateText({
-                model: openai("gpt-4o-mini"),
+                model: groq("llama3-8b-8192"),
                 prompt: `Based on the following group creation request, write a concise 2-3 sentence summary:
                 
 Group Name: ${answers.groupName}

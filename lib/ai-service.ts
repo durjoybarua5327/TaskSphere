@@ -1,18 +1,16 @@
-import { createOpenAI } from '@ai-sdk/openai';
+import { createGroq } from '@ai-sdk/groq';
 import { generateText } from 'ai';
 import { logDebug } from "@/lib/debug-logger";
 import fs from 'fs';
 import path from 'path';
 
-// Initialize OpenRouter
 // Initialize Groq
-const groq = createOpenAI({
-    baseURL: 'https://api.groq.com/openai/v1',
-    apiKey: process.env.OPENAI_API_KEY,
+const groq = createGroq({
+    apiKey: process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY,
 });
 
 // Debug: Verify Key Check
-const key = process.env.OPENAI_API_KEY || "";
+const key = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || "";
 logDebug(`AI-SERVICE: Key Check`, {
     exists: !!key,
     length: key.length,

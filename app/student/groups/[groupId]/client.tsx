@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Users,
@@ -13,8 +13,15 @@ import {
     Calendar,
     Search,
     Shield,
-    ArrowRight
+    ArrowRight,
+    MessageSquare,
+    Bot,
+    User,
+    Send,
+    Loader2,
+    Sparkles
 } from "lucide-react";
+import { askGroupAI } from "./ai-actions";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -26,9 +33,45 @@ interface StudentGroupDetailsClientProps {
 }
 
 export function StudentGroupDetailsClient({ initialGroup, initialMembers, initialTasks, currentUserId }: StudentGroupDetailsClientProps) {
-    const [activeTab, setActiveTab] = useState<'members' | 'tasks'>('tasks');
+    const [activeTab, setActiveTab] = useState<'members' | 'tasks' | 'ai'>('tasks');
     const [searchQuery, setSearchQuery] = useState("");
+    const [chatMessages, setChatMessages] = useState<{ role: "user" | "ai", content: string }[]>([]);
+    const [chatInput, setChatInput] = useState("");
+    const [isAskingAI, setIsAskingAI] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
+
+    const scrollToBottom = () => {
+        if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'ai') {
+            scrollToBottom();
+        }
+    }, [chatMessages, activeTab]);
+
+    const handleAskAI = async () => {
+        if (!chatInput.trim() || isAskingAI) return;
+
+        const userMsg = chatInput.trim();
+        setChatInput("");
+        setChatMessages(prev => [...prev, { role: "user", content: userMsg }]);
+        setIsAskingAI(true);
+
+        try {
+            const { response } = await askGroupAI(initialGroup.id, userMsg, chatMessages);
+            setChatMessages(prev => [...prev, { role: "ai", content: response }]);
+        } catch (error) {
+            console.error("AI Error:", error);
+            setChatMessages(prev => [...prev, { role: "ai", content: "I'm sorry, I encountered an error. Please try again later." }]);
+        } finally {
+            setIsAskingAI(false);
+        }
+    };
 
     const filteredMembers = initialMembers.filter(member => {
         const query = searchQuery.toLowerCase();
@@ -97,6 +140,7 @@ export function StudentGroupDetailsClient({ initialGroup, initialMembers, initia
                 {[
                     { id: 'tasks', label: 'Tasks', icon: ClipboardList },
                     { id: 'members', label: 'Members', icon: Users },
+                    { id: 'ai', label: 'AI Assistant', icon: Sparkles },
                 ].map((tab) => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
@@ -240,6 +284,125 @@ export function StudentGroupDetailsClient({ initialGroup, initialMembers, initia
                                 ))}
                             </div>
                         )}
+                    </motion.div>
+                )}
+                {activeTab === 'ai' && (
+                    <motion.div
+                        key="ai"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="flex flex-col h-[calc(100vh-420px)] min-h-[500px] bg-white border border-slate-100 rounded-[2rem] overflow-hidden shadow-sm"
+                    >
+                        {/* Chat Header */}
+                        <div className="px-6 py-4 border-b border-slate-50 bg-slate-50/30 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
+                                    <Bot className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Group AI Assistant</h3>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Always here to help you</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase tracking-widest border border-emerald-100">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                Online
+                            </div>
+                        </div>
+
+                        {/* Messages Area */}
+                        <div
+                            ref={scrollContainerRef}
+                            className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide"
+                        >
+                            {chatMessages.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-center space-y-4 max-w-sm mx-auto opacity-50">
+                                    <div className="w-16 h-16 rounded-3xl bg-slate-50 flex items-center justify-center text-slate-300">
+                                        <MessageSquare className="w-8 h-8" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-black text-slate-900 uppercase tracking-widest mb-1">How can I help you today?</p>
+                                        <p className="text-[10px] font-medium text-slate-500">Ask me about your pending tasks, average scores, or highest achievements in this group.</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-2 w-full text-center">
+                                        {[
+                                            "Which tasks haven't I solved yet?",
+                                            "What is my average score in this group?",
+                                            "What is my highest score?",
+                                            "Show me a summary of my progress."
+                                        ].map((suggest, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => { setChatInput(suggest); }}
+                                                className="px-4 py-2 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all text-slate-400 border border-transparent hover:border-emerald-100"
+                                            >
+                                                {suggest}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                chatMessages.map((msg, i) => (
+                                    <motion.div
+                                        key={i}
+                                        initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+                                    >
+                                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${msg.role === 'user' ? 'bg-[#0F172A] text-white' : 'bg-white border border-slate-100 text-emerald-500'}`}>
+                                            {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                                        </div>
+                                        <div className={`max-w-[80%] space-y-1 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                            <div className={`px-4 py-3 rounded-2xl text-[12px] font-medium leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-[#0F172A] text-white rounded-tr-none' : 'bg-slate-50 text-slate-700 border border-slate-100 rounded-tl-none'}`}>
+                                                {msg.content}
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                ))
+                            )}
+                            {isAskingAI && (
+                                <div className="flex gap-4">
+                                    <div className="w-8 h-8 rounded-xl bg-white border border-slate-100 text-emerald-500 flex items-center justify-center animate-bounce">
+                                        <Bot className="w-4 h-4" />
+                                    </div>
+                                    <div className="bg-slate-50 border border-slate-100 px-4 py-3 rounded-2xl rounded-tl-none">
+                                        <div className="flex gap-1">
+                                            <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                                            <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                                            <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        {/* Input Area */}
+                        <div className="p-4 bg-slate-50/50 border-t border-slate-100 mt-auto">
+                            <div className="flex items-center gap-2 bg-white p-2 border border-slate-200 rounded-2xl focus-within:ring-4 focus-within:ring-emerald-500/5 focus-within:border-emerald-200 transition-all shadow-sm">
+                                <input
+                                    type="text"
+                                    value={chatInput}
+                                    onChange={(e) => setChatInput(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAskAI()}
+                                    placeholder="Ask me anything about this group..."
+                                    className="flex-1 bg-transparent border-none outline-none px-3 text-sm font-medium placeholder:text-slate-400"
+                                    disabled={isAskingAI}
+                                />
+                                <button
+                                    onClick={handleAskAI}
+                                    disabled={!chatInput.trim() || isAskingAI}
+                                    className="w-10 h-10 rounded-xl bg-[#0F172A] text-white flex items-center justify-center hover:bg-emerald-600 transition-all disabled:opacity-50 active:scale-95 group"
+                                >
+                                    {isAskingAI ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <Send className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                                    )}
+                                </button>
+                            </div>
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>

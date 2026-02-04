@@ -308,7 +308,7 @@ export function GroupDetailsClient({ initialGroup, initialMembers, initialTasks,
                 {[
                     { id: 'members', label: 'Members', icon: Users },
                     { id: 'tasks', label: 'Tasks & Submissions', icon: ClipboardList },
-                    { id: 'aichat', label: 'Group AI Assistant', icon: Sparkles },
+                    { id: 'aichat', label: 'AI Assistant', icon: Sparkles },
                 ].map((tab) => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;

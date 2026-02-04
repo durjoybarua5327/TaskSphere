@@ -44,10 +44,20 @@ export function StudentTaskDetailsClient({ task, initialSubmission, userId, publ
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [successMessage, setSuccessMessage] = useState("");
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [selectedPeerSubmission, setSelectedPeerSubmission] = useState<any>(null);
 
     const isGraded = initialSubmission?.scores && initialSubmission?.scores.length > 0;
     const score = isGraded ? initialSubmission.scores[0] : null;
+
+    const formatDate = (dateString: string) => {
+        const d = new Date(dateString);
+        const day = d.getDate().toString().padStart(2, '0');
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
+    };
 
     const handleSubmit = async () => {
         if (!content && attachments.length === 0 && !linkUrl) {
@@ -116,10 +126,7 @@ export function StudentTaskDetailsClient({ task, initialSubmission, userId, publ
                         {/* Header Badges & Action Button */}
                         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
                             <div className="flex flex-wrap items-center gap-1.5 text-[8px]">
-                                <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#E6F8F1] text-emerald-600 border border-emerald-100/50">
-                                    <FileText className="w-2.5 h-2.5" />
-                                    <span className="font-black uppercase tracking-widest">Details</span>
-                                </div>
+
                                 <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#F0F5FF] text-indigo-600 border border-indigo-100/50">
                                     <span className="font-black uppercase tracking-widest">Group: {task.group?.name}</span>
                                 </div>
@@ -132,15 +139,13 @@ export function StudentTaskDetailsClient({ task, initialSubmission, userId, publ
                                 </div>
                             </div>
 
-                            {!isGraded && (
-                                <button
-                                    onClick={() => setIsModalOpen(true)}
-                                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0F172A] text-white rounded-lg text-[9px] font-black uppercase tracking-[0.15em] hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 active:scale-95 group shrink-0"
-                                >
-                                    <Send className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                                    {initialSubmission ? 'UPDATE SUBMISSION' : 'SUBMIT TASK'}
-                                </button>
-                            )}
+                            <button
+                                onClick={() => setIsModalOpen(true)}
+                                className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#0F172A] text-white rounded-lg text-[9px] font-black uppercase tracking-[0.15em] hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 active:scale-95 group shrink-0"
+                            >
+                                <Send className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                                {initialSubmission ? 'UPDATE SUBMISSION' : 'SUBMIT TASK'}
+                            </button>
                         </div>
 
                         {/* Title & Description - Compact Sizes */}
@@ -189,52 +194,7 @@ export function StudentTaskDetailsClient({ task, initialSubmission, userId, publ
                     </div>
                 </div>
 
-                {/* Grade Card (If Graded) */}
-                {isGraded && (
-                    <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 md:p-10 shadow-2xl relative overflow-hidden group">
-                        <div className="absolute top-0 right-0 p-24 bg-emerald-500/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/2 pointer-events-none group-hover:bg-emerald-500/20 transition-all duration-700" />
 
-                        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            <div className="space-y-4">
-                                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                    <Trophy className="w-3 h-3" />
-                                    <span className="text-[9px] font-black uppercase tracking-widest">Grade Achievement</span>
-                                </div>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-7xl font-black text-white tracking-tighter">{score.score_value}</span>
-                                    <span className="text-2xl font-black text-slate-500 tracking-tighter">/ {task.max_score}</span>
-                                </div>
-                                <div className="p-6 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-sm">
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">Educator Feedback</p>
-                                    <p className="text-base font-medium text-slate-200 italic leading-relaxed">
-                                        "{score.feedback || 'Great work on this task!'}"
-                                    </p>
-                                </div>
-                            </div>
-
-                            <div className="bg-white/5 rounded-3xl p-8 border border-white/5 flex flex-col justify-center space-y-6">
-                                <div className="flex items-center gap-4 text-emerald-400">
-                                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-                                        <CheckCircle2 className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest leading-none mb-1">Status: Completed</p>
-                                        <p className="text-[9px] font-bold opacity-60 uppercase tracking-widest">Validated by Educator</p>
-                                    </div>
-                                </div>
-                                <div className="space-y-3">
-                                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Submission History</p>
-                                    <div className="flex items-center justify-between py-3 border-y border-white/5">
-                                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Submitted On</span>
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                                            {new Date(initialSubmission.submitted_at).toLocaleDateString()}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
 
                 {/* Submissions Section */}
                 <div className="space-y-4">
@@ -253,18 +213,22 @@ export function StudentTaskDetailsClient({ task, initialSubmission, userId, publ
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {/* 1. Show User's Own Submission First */}
                         {initialSubmission && (
-                            <div className="bg-white border-2 border-emerald-500/20 rounded-3xl p-5 shadow-sm hover:shadow-lg transition-all group/sub relative overflow-hidden">
+                            <motion.div
+                                whileHover={{ scale: 1.02, y: -4 }}
+                                onClick={() => setIsViewModalOpen(true)}
+                                className="bg-white border-2 border-emerald-500/20 rounded-3xl p-5 shadow-sm hover:shadow-emerald-500/10 transition-all group/sub relative overflow-hidden cursor-pointer"
+                            >
                                 <div className="absolute top-0 right-0 px-3 py-1 bg-emerald-500 text-white text-[7px] font-black uppercase tracking-widest rounded-bl-xl">
                                     Your Work
                                 </div>
                                 <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-10 h-10 rounded-full border-2 border-emerald-100 overflow-hidden bg-emerald-50 flex items-center justify-center text-emerald-600 font-black text-xs">
+                                    <div className="w-10 h-10 rounded-full border-2 border-emerald-100 overflow-hidden bg-emerald-50 flex items-center justify-center text-emerald-600 font-black text-xs transition-transform group-hover/sub:scale-110">
                                         {task.group?.name?.charAt(0)}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="text-xs font-black text-slate-900 uppercase truncate leading-tight">You</p>
                                         <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                                            {new Date(initialSubmission.submitted_at).toLocaleDateString()}
+                                            {formatDate(initialSubmission.submitted_at)}
                                         </p>
                                     </div>
                                     {isGraded && (
@@ -274,50 +238,98 @@ export function StudentTaskDetailsClient({ task, initialSubmission, userId, publ
                                     )}
                                 </div>
 
-                                <div className="space-y-4">
-                                    <div
-                                        className="text-[11px] text-slate-500 font-medium line-clamp-2 leading-relaxed"
-                                        dangerouslySetInnerHTML={{ __html: initialSubmission.content || 'No description provided' }}
-                                    />
-
-                                    <div className="pt-3 border-t border-slate-50 flex items-center justify-between">
-                                        <div className="flex gap-2">
-                                            {!isGraded && (
-                                                <>
-                                                    <button
-                                                        onClick={() => setIsModalOpen(true)}
-                                                        className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
-                                                        title="Edit Submission"
-                                                    >
-                                                        <Edit className="w-3.5 h-3.5" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setIsDeleteModalOpen(true)}
-                                                        className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-                                                        title="Delete Submission"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </button>
-                                                </>
-                                            )}
+                                {isGraded ? (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b border-slate-50 pb-3">
+                                            <div>
+                                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Grade Achievement</p>
+                                                <div className="flex items-baseline gap-1">
+                                                    <span className="text-2xl font-black text-slate-900">{score.score_value}</span>
+                                                    <span className="text-slate-400 font-bold text-sm">/ {task.max_score}</span>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-[7px] font-black uppercase tracking-widest border border-emerald-100 flex items-center gap-1">
+                                                    <CheckCircle2 className="w-2.5 h-2.5" />
+                                                    Validated
+                                                </div>
+                                                <p className="text-[7px] font-bold text-slate-400 uppercase tracking-widest mt-1">Status: Completed</p>
+                                            </div>
                                         </div>
-                                        <Link
-                                            href={`/student/tasks/${task.id}/submission`}
-                                            className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] group-hover/sub:text-emerald-500 transition-colors flex items-center gap-1"
-                                        >
-                                            Details <ChevronRight className="w-2.5 h-2.5" />
-                                        </Link>
+
+                                        {score.feedback && (
+                                            <div className="space-y-1">
+                                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Educator Feedback</p>
+                                                <p className="text-[10px] font-medium text-slate-600 leading-relaxed italic line-clamp-2">
+                                                    "{score.feedback}"
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        <div className="pt-3 border-t border-slate-50 flex items-center justify-between">
+                                            <div>
+                                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Submission History</p>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Submitted On:</p>
+                                                    <p className="text-[9px] font-bold text-slate-900">{formatDate(initialSubmission.submitted_at)}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setIsModalOpen(true); }}
+                                                    className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
+                                                    title="Edit Submission"
+                                                >
+                                                    <Edit className="w-3.5 h-3.5" />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setIsDeleteModalOpen(true); }}
+                                                    className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                                                    title="Delete Submission"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        <div
+                                            className="text-[11px] text-slate-500 font-medium line-clamp-2 leading-relaxed"
+                                            dangerouslySetInnerHTML={{ __html: initialSubmission.content || 'No description provided' }}
+                                        />
+
+                                        <div className="pt-3 border-t border-slate-50 flex items-center justify-between">
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setIsModalOpen(true); }}
+                                                    className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors"
+                                                    title="Edit Submission"
+                                                >
+                                                    <Edit className="w-3.5 h-3.5" />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setIsDeleteModalOpen(true); }}
+                                                    className="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                                                    title="Delete Submission"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </motion.div>
                         )}
 
                         {/* 2. Show Peer Submissions if Public */}
                         {isPublic && peerSubmissions.length > 0 && (
                             peerSubmissions.map((submission: any) => (
-                                <div
+                                <motion.div
                                     key={submission.id}
-                                    className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:shadow-lg transition-all group/sub"
+                                    whileHover={{ scale: 1.02, y: -4 }}
+                                    onClick={() => setSelectedPeerSubmission(submission)}
+                                    className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:shadow-indigo-500/10 transition-all group/sub cursor-pointer relative overflow-hidden"
                                 >
                                     <div className="flex items-center gap-3 mb-4">
                                         <div className="w-10 h-10 rounded-full border-2 border-slate-50 overflow-hidden bg-indigo-50 flex items-center justify-center text-indigo-500 font-black text-xs transition-transform group-hover/sub:scale-110">
@@ -332,7 +344,7 @@ export function StudentTaskDetailsClient({ task, initialSubmission, userId, publ
                                                 {submission.student.full_name}
                                             </p>
                                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                                                {new Date(submission.submitted_at).toLocaleDateString()}
+                                                {formatDate(submission.submitted_at)}
                                             </p>
                                         </div>
                                     </div>
@@ -351,16 +363,18 @@ export function StudentTaskDetailsClient({ task, initialSubmission, userId, publ
                                                         <span className="text-[8px] font-black">{submission.attachments.length}</span>
                                                     </div>
                                                 )}
+                                                {submission.link_url && (
+                                                    <div className="flex items-center gap-1 text-slate-400 group-hover/sub:text-indigo-500 transition-colors">
+                                                        <LinkIcon className="w-3 h-3" />
+                                                    </div>
+                                                )}
                                             </div>
-                                            <Link
-                                                href={`/student/tasks/${task.id}/peer/${submission.id}`}
-                                                className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] group-hover/sub:text-emerald-500 transition-colors flex items-center gap-1"
-                                            >
-                                                View detail <ChevronRight className="w-2.5 h-2.5" />
-                                            </Link>
+                                            <div className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] group-hover/sub:text-emerald-500 transition-colors flex items-center gap-1">
+                                                View details <ChevronRight className="w-2.5 h-2.5" />
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                </motion.div>
                             ))
                         )}
 
@@ -484,6 +498,206 @@ export function StudentTaskDetailsClient({ task, initialSubmission, userId, publ
                             Confirm Delete
                         </button>
                     </div>
+                </div>
+            </Modal>
+            {/* Peer Submission View Modal */}
+            <Modal
+                isOpen={!!selectedPeerSubmission}
+                onClose={() => setSelectedPeerSubmission(null)}
+                title={`Work by ${selectedPeerSubmission?.student.full_name}`}
+                description="View-only submission details."
+                className="max-w-3xl"
+            >
+                <div className="space-y-6 pt-2">
+                    <div className="space-y-3">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <FileText className="w-3.5 h-3.5" /> Work Description
+                        </label>
+                        <div
+                            className="p-6 bg-slate-50 rounded-2xl border border-slate-100 prose prose-slate max-w-none text-sm font-medium leading-relaxed"
+                            dangerouslySetInnerHTML={{ __html: selectedPeerSubmission?.content || 'No content provided.' }}
+                        />
+                    </div>
+
+                    {(selectedPeerSubmission?.attachments?.length > 0 || selectedPeerSubmission?.link_url) && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {selectedPeerSubmission?.attachments?.length > 0 && (
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        <Download className="w-3.5 h-3.5" /> Attachments
+                                    </label>
+                                    <div className="space-y-2">
+                                        {selectedPeerSubmission.attachments.map((url: string, idx: number) => {
+                                            const fileName = url.split('/').pop()?.split('-').pop() || "File";
+                                            return (
+                                                <a
+                                                    key={idx}
+                                                    href={url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-emerald-500/30 hover:shadow-md transition-all group"
+                                                >
+                                                    <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white transition-colors">
+                                                        <Download className="w-4 h-4" />
+                                                    </div>
+                                                    <span className="text-[10px] font-black text-slate-600 uppercase tracking-tight truncate flex-1">
+                                                        {fileName}
+                                                    </span>
+                                                </a>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {selectedPeerSubmission?.link_url && (
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        <LinkIcon className="w-3.5 h-3.5" /> External Link
+                                    </label>
+                                    <a
+                                        href={selectedPeerSubmission.link_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-indigo-500/30 hover:shadow-md transition-all group"
+                                    >
+                                        <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+                                            <LinkIcon className="w-4 h-4" />
+                                        </div>
+                                        <span className="text-[10px] font-black text-slate-600 tracking-tight truncate flex-1">
+                                            {selectedPeerSubmission.link_url}
+                                        </span>
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </Modal>
+            {/* User Own Submission View Modal */}
+            <Modal
+                isOpen={isViewModalOpen}
+                onClose={() => setIsViewModalOpen(false)}
+                title="Your Submission Details"
+                description="View-only record of your work."
+                className="max-w-4xl"
+            >
+                <div className="space-y-6 pt-2">
+                    {/* Grade & Feedback Section */}
+                    {isGraded && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-emerald-600 rounded-[2rem] p-6 text-white shadow-xl shadow-emerald-200 relative overflow-hidden group">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-white/20 transition-colors" />
+                                <div className="relative z-10">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-100/80 mb-4">Grade Achievement</p>
+                                    <div className="flex items-baseline gap-1">
+                                        <span className="text-5xl font-black">{score.score_value}</span>
+                                        <span className="text-emerald-100/60 font-bold text-lg">/ {task.max_score}</span>
+                                    </div>
+                                    <div className="mt-6 flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-xl w-fit border border-white/10">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        <span className="text-[9px] font-black uppercase tracking-widest">Validated by Educator</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="md:col-span-2 bg-white border border-slate-100 rounded-[2rem] p-6 shadow-sm flex flex-col justify-between">
+                                <div>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Educator Feedback</p>
+                                        <div className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[8px] font-black uppercase tracking-widest border border-emerald-100">
+                                            Status: Completed
+                                        </div>
+                                    </div>
+                                    {score.feedback && (
+                                        <p className="text-sm font-medium text-slate-600 leading-relaxed italic">
+                                            "{score.feedback}"
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="mt-6 pt-4 border-t border-slate-50 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div>
+                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Submitted On</p>
+                                            <p className="text-[10px] font-bold text-slate-900">{formatDate(initialSubmission.submitted_at)}</p>
+                                        </div>
+                                        <div className="w-px h-6 bg-slate-100" />
+                                        <div>
+                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Submission History</p>
+                                            <p className="text-[10px] font-bold text-emerald-600">Finalized Record</p>
+                                        </div>
+                                    </div>
+                                    <Trophy className="w-5 h-5 text-emerald-500 opacity-20" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="space-y-3">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <FileText className="w-3.5 h-3.5" /> Work Description
+                        </label>
+                        <div
+                            className="p-6 bg-slate-50 rounded-2xl border border-slate-100 prose prose-slate max-w-none text-sm font-medium leading-relaxed"
+                            dangerouslySetInnerHTML={{ __html: initialSubmission?.content || 'No content provided.' }}
+                        />
+                    </div>
+
+                    {(initialSubmission?.attachments?.length > 0 || initialSubmission?.link_url) && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {initialSubmission?.attachments?.length > 0 && (
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        <Download className="w-3.5 h-3.5" /> Your Attachments
+                                    </label>
+                                    <div className="space-y-2">
+                                        {initialSubmission.attachments.map((url: string, idx: number) => {
+                                            const fileName = url.split('/').pop()?.split('-').pop() || "File";
+                                            return (
+                                                <a
+                                                    key={idx}
+                                                    href={url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-emerald-500/30 hover:shadow-md transition-all group"
+                                                >
+                                                    <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white transition-colors">
+                                                        <Download className="w-4 h-4" />
+                                                    </div>
+                                                    <span className="text-[10px] font-black text-slate-600 uppercase tracking-tight truncate flex-1">
+                                                        {fileName}
+                                                    </span>
+                                                </a>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {initialSubmission?.link_url && (
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        <LinkIcon className="w-3.5 h-3.5" /> External Link
+                                    </label>
+                                    <a
+                                        href={initialSubmission.link_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-3 p-3 bg-white border border-slate-100 rounded-xl hover:border-indigo-500/30 hover:shadow-md transition-all group"
+                                    >
+                                        <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+                                            <LinkIcon className="w-4 h-4" />
+                                        </div>
+                                        <span className="text-[10px] font-black text-slate-600 tracking-tight truncate flex-1">
+                                            {initialSubmission.link_url}
+                                        </span>
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                 </div>
             </Modal>
         </div>

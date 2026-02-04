@@ -1,18 +1,18 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    Bot,
-    Send,
-    Sparkles,
-    MessageSquare,
-    Loader2,
-    AlertCircle,
-    X,
-    User,
+    Users,
     ClipboardList,
-    Users
+    MessageSquare,
+    Bot,
+    User,
+    Send,
+    Loader2,
+    Sparkles,
+    AlertCircle,
+    X
 } from "lucide-react";
 import { chatWithGroupAi } from "../../../actions";
 
@@ -29,29 +29,22 @@ interface ChatMessage {
 }
 
 export function GroupAIChat({ groupId, groupName }: GroupAIChatProps) {
-    const [messages, setMessages] = useState<ChatMessage[]>([
-        {
-            id: "initial",
-            role: "ai",
-            content: `Hello! I'm the AI Assistant for **${groupName}**. I have access to all group members, tasks, and student submissions. \n\nYou can ask me things like:\n- "How many students have submitted Task 1?"\n- "Has user@example.com submitted all their tasks?"\n- "Rank students based on their total scores."\n- "Show me a summary of all task progress."`,
-            timestamp: new Date()
-        }
-    ]);
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-    const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
-        if (messagesEndRef.current) {
-            messagesEndRef.current.scrollIntoView({ behavior, block: "end" });
+    const scrollToBottom = () => {
+        if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
         }
-    }, []);
+    };
 
     useEffect(() => {
         scrollToBottom();
-    }, [messages, isLoading, scrollToBottom]);
+    }, [messages, isLoading]);
 
     const handleSend = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
@@ -97,146 +90,136 @@ export function GroupAIChat({ groupId, groupName }: GroupAIChatProps) {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-350px)] min-h-[500px] bg-white border border-slate-100 rounded-[2rem] overflow-hidden shadow-sm shadow-slate-200/50">
-            {/* Header */}
-            <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-lg shadow-emerald-200">
-                        <Bot className="w-6 h-6" />
+        <div className="flex flex-col h-[calc(100vh-420px)] min-h-[500px] bg-white border border-slate-100 rounded-[2rem] overflow-hidden shadow-sm">
+            {/* Chat Header */}
+            <div className="px-6 py-4 border-b border-slate-50 bg-slate-50/30 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
+                        <Bot className="w-5 h-5" />
                     </div>
                     <div>
-                        <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Group Management AI</h3>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5 mt-0.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            Connected to group data
-                        </p>
+                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Group Management AI</h3>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Always here to help you</p>
                     </div>
                 </div>
-
-                <div className="hidden md:flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-slate-100 text-[9px] font-black uppercase tracking-widest text-slate-500 shadow-sm">
-                        <Users className="w-3 h-3 text-emerald-500" />
-                        Members
-                    </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-slate-100 text-[9px] font-black uppercase tracking-widest text-slate-500 shadow-sm">
-                        <ClipboardList className="w-3 h-3 text-blue-500" />
-                        Tasks
-                    </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-slate-100 text-[9px] font-black uppercase tracking-widest text-slate-500 shadow-sm">
-                        <Sparkles className="w-3 h-3 text-purple-500" />
-                        Submissions
-                    </div>
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase tracking-widest border border-emerald-100">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Online
                 </div>
             </div>
 
             {/* Messages Area */}
             <div
-                ref={containerRef}
-                className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 custom-scrollbar bg-slate-50/20"
+                ref={scrollContainerRef}
+                className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide"
             >
-                {messages.map((message) => (
-                    <motion.div
-                        key={message.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={`flex gap-4 ${message.role === "user" ? "flex-row-reverse" : "flex-row"}`}
-                    >
-                        <div className={`shrink-0 w-10 h-10 rounded-2xl flex items-center justify-center shadow-md ${message.role === "ai"
-                            ? "bg-gradient-to-br from-slate-800 to-slate-900 text-white"
-                            : "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                            }`}>
-                            {message.role === "ai" ? <Bot className="w-5 h-5" /> : <User className="w-5 h-5" />}
+                {messages.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center space-y-4 max-w-sm mx-auto opacity-50">
+                        <div className="w-16 h-16 rounded-3xl bg-slate-50 flex items-center justify-center text-slate-300">
+                            <MessageSquare className="w-8 h-8" />
                         </div>
-
-                        <div className={`flex flex-col max-w-[85%] md:max-w-[70%] ${message.role === "user" ? "items-end" : "items-start"}`}>
-                            <div className={`px-5 py-4 rounded-[1.5rem] shadow-sm text-sm font-medium leading-relaxed ${message.role === "ai"
-                                ? "bg-white text-slate-700 rounded-tl-none border border-slate-100"
-                                : "bg-slate-900 text-white rounded-tr-none"
-                                }`}>
-                                <div className="whitespace-pre-wrap">
-                                    {message.content.split('**').map((part, i) =>
-                                        i % 2 === 1 ? <strong key={i} className="font-black text-emerald-500">{part}</strong> : part
-                                    )}
-                                </div>
+                        <div>
+                            <p className="text-xs font-black text-slate-900 uppercase tracking-widest mb-1">How can I help you today?</p>
+                            <p className="text-[10px] font-medium text-slate-500">I can help you analyze student performance, rank members, and summarize task progress.</p>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 w-full text-center">
+                            {[
+                                "How many students have submitted all tasks?",
+                                "Who is the top performing student?",
+                                "Show me a task completion summary.",
+                                "Which students have low scores?"
+                            ].map((suggest, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => { setInput(suggest); }}
+                                    className="px-4 py-2 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all text-slate-400 border border-transparent hover:border-emerald-100"
+                                >
+                                    {suggest}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                ) : (
+                    messages.map((msg, i) => (
+                        <motion.div
+                            key={msg.id || i}
+                            initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
+                        >
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${msg.role === 'user' ? 'bg-[#0F172A] text-white' : 'bg-white border border-slate-100 text-emerald-500'}`}>
+                                {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                             </div>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2 px-1">
-                                {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                        </div>
-                    </motion.div>
-                ))}
-
-                {isLoading && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex gap-4"
-                    >
-                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 text-white flex items-center justify-center shadow-md">
-                            <Bot className="w-5 h-5" />
-                        </div>
-                        <div className="bg-white border border-slate-100 px-6 py-4 rounded-[1.5rem] rounded-tl-none flex items-center gap-3 shadow-sm">
-                            <Loader2 className="w-4 h-4 text-emerald-500 animate-spin" />
-                            <span className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse">Analysing Group Data...</span>
-                        </div>
-                    </motion.div>
+                            <div className={`max-w-[80%] space-y-1 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                <div className={`px-4 py-3 rounded-2xl text-[12px] font-medium leading-relaxed shadow-sm ${msg.role === 'user' ? 'bg-[#0F172A] text-white rounded-tr-none' : 'bg-slate-50 text-slate-700 border border-slate-100 rounded-tl-none'}`}>
+                                    <div className="whitespace-pre-wrap">
+                                        {msg.content.split('**').map((part, idx) =>
+                                            idx % 2 === 1 ? <strong key={idx} className="font-bold text-emerald-600">{part}</strong> : part
+                                        )}
+                                    </div>
+                                </div>
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest px-1">
+                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                            </div>
+                        </motion.div>
+                    ))
                 )}
-
+                {isLoading && (
+                    <div className="flex gap-4">
+                        <div className="w-8 h-8 rounded-xl bg-white border border-slate-100 text-emerald-500 flex items-center justify-center animate-bounce">
+                            <Bot className="w-4 h-4" />
+                        </div>
+                        <div className="bg-slate-50 border border-slate-100 px-4 py-3 rounded-2xl rounded-tl-none">
+                            <div className="flex gap-1">
+                                <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                                <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                                <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" />
+                            </div>
+                        </div>
+                    </div>
+                )}
                 {error && (
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         className="flex justify-center"
                     >
-                        <div className="flex items-center gap-2 px-4 py-2 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-[10px] font-black uppercase tracking-widest shrink-0">
+                        <div className="flex items-center gap-2 px-4 py-2 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-[9px] font-black uppercase tracking-widest">
                             <AlertCircle className="w-3 h-3" />
                             {error}
-                            <button onClick={() => setError(null)} className="ml-2 hover:text-rose-800"><X className="w-3 h-3" /></button>
+                            <button onClick={() => setError(null)} className="ml-2 hover:text-rose-800"><X className="w-3" /></button>
                         </div>
                     </motion.div>
                 )}
-
-                <div ref={messagesEndRef} className="h-4 shrink-0" />
+                <div ref={messagesEndRef} />
             </div>
 
             {/* Input Area */}
-            <div className="p-6 bg-white border-t border-slate-100">
+            <div className="p-4 bg-slate-50/50 border-t border-slate-100 mt-auto">
                 <form
                     onSubmit={handleSend}
-                    className="relative flex items-center gap-3"
+                    className="flex items-center gap-2 bg-white p-2 border border-slate-200 rounded-2xl focus-within:ring-4 focus-within:ring-emerald-500/5 focus-within:border-emerald-200 transition-all shadow-sm"
                 >
-                    <div className="relative flex-1 group">
-                        <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
-                            <MessageSquare className="w-5 h-5" />
-                        </div>
-                        <input
-                            type="text"
-                            placeholder={`Inquire about ${groupName} data...`}
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            disabled={isLoading}
-                            className="w-full pl-12 pr-6 py-4 bg-slate-50/50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500/50 focus:bg-white transition-all shadow-inner"
-                        />
-                    </div>
-
+                    <input
+                        type="text"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        placeholder="Inquire about group data..."
+                        className="flex-1 bg-transparent border-none outline-none px-3 text-sm font-medium placeholder:text-slate-400"
+                        disabled={isLoading}
+                    />
                     <button
                         type="submit"
                         disabled={!input.trim() || isLoading}
-                        className="w-14 h-14 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-200 hover:bg-slate-800 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 disabled:shadow-none shrink-0"
+                        className="w-10 h-10 rounded-xl bg-[#0F172A] text-white flex items-center justify-center hover:bg-emerald-600 transition-all disabled:opacity-50 active:scale-95 group"
                     >
                         {isLoading ? (
-                            <Loader2 className="w-6 h-6 animate-spin" />
+                            <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
-                            <Send className="w-6 h-6" />
+                            <Send className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                         )}
                     </button>
-
-                    <div className="absolute -top-12 left-0 right-0 flex justify-center opacity-0 group-focus-within:opacity-100 transition-opacity pointer-events-none">
-                        <span className="px-3 py-1 bg-slate-900 text-white text-[8px] font-black uppercase tracking-[0.2em] rounded-full flex items-center gap-1.5 shadow-xl">
-                            <Sparkles className="w-2.5 h-2.5 text-emerald-400" />
-                            AI-Powered Insights
-                        </span>
-                    </div>
                 </form>
             </div>
         </div>
