@@ -255,12 +255,21 @@ export function GroupsClient({ initialGroups, initialRequests, myGroupIds = [] }
         }
     };
 
-    const handleRemoveMember = async (membershipId: string) => {
-        const result = await removeMemberFromGroup(membershipId);
-        if (result.success && selectedGroupForMembers) {
-            // Update local state
-            setGroupMembers(prev => prev.filter(m => m.id !== membershipId));
-        }
+    const handleRemoveMember = (membershipId: string, identifier: string) => {
+        openModal({
+            type: "delete",
+            title: "Remove Member",
+            description: `Are you sure you want to remove "${identifier}" from "${selectedGroupForMembers?.name}"? They will lose all access to tasks and materials.`,
+            isDestructive: true,
+            confirmText: "Remove Member",
+            onConfirm: async () => {
+                const result = await removeMemberFromGroup(membershipId);
+                if (result.success && selectedGroupForMembers) {
+                    // Update local state
+                    setGroupMembers(prev => prev.filter(m => m.id !== membershipId));
+                }
+            },
+        });
     };
 
     const handleJoinRequestAction = async (requestId: string, action: "approved" | "rejected") => {
@@ -499,7 +508,7 @@ function MembersModal({
     requests: JoinRequest[];
     isLoading: boolean;
     onUpdateRole: (id: string, role: "student" | "admin" | "top_admin") => void;
-    onRemove: (id: string) => void;
+    onRemove: (id: string, identifier: string) => void;
     onRequestAction: (id: string, action: "approved" | "rejected") => void;
 }) {
     if (!isOpen) return null;
@@ -635,7 +644,7 @@ function MembersModal({
                                                         </div>
 
                                                         <button
-                                                            onClick={() => onRemove(member.id)}
+                                                            onClick={() => onRemove(member.id, member.user?.full_name || member.user?.email || "this member")}
                                                             title="Remove from Community"
                                                             className="p-2.5 hover:bg-red-50 text-red-400 hover:text-red-500 rounded-xl transition-all border border-transparent hover:border-red-100 shadow-sm active:scale-90"
                                                         >

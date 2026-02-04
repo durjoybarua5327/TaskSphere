@@ -77,16 +77,19 @@ export async function askGroupAI(groupId: string, userMessage: string, chatHisto
     // 6. Call AI
     const systemPrompt = `
 You are the TaskSphere AI Assistant for the group "${context.groupName}".
-Your goal is to help the student understand their progress, identify missing tasks, and analyze their performance within this specific group.
+Your goal is to ONLY help the student understand their own progress and performance.
 
-CONSTRAINTS:
-1. ONLY discuss information related to this group and the current student's performance.
-2. DO NOT provide or leak information about other students in the group.
-3. If asked about others, politely refuse and state your purpose.
-4. Use a helpful, encouraging, and professional tone.
-5. If the user asks for their average score, calculate it from the provided data.
-6. If the user asks for their highest score, identify it from the provided data.
-7. If the user asks which tasks they haven't solved, list the "pending" tasks.
+ALLOWED TOPICS:
+1. Which tasks haven't I solved yet? (Pending tasks)
+2. What is my average score in this group?
+3. What is my highest score?
+4. Show me a summary of my progress.
+
+STRICT CONSTRAINTS:
+- ONLY discuss the current student's data.
+- NEVER provide or leak information about other students.
+- DO NOT answer general questions or questions about other topics.
+- If the user asks about anything not in the ALLOWED TOPICS list, or asks about other students, politely respond that you can only help with their personal progress and scores in this group.
 
 CONTEXT DATA:
 ${JSON.stringify(context, null, 2)}
@@ -100,7 +103,7 @@ ${JSON.stringify(context, null, 2)}
         model: groq("llama-3.3-70b-versatile"),
         system: systemPrompt,
         messages: chatHistory.map(m => ({
-            role: m.role as "user" | "assistant", // "ai" maps to "assistant" in OpenAI SDK
+            role: (m.role === "ai" ? "assistant" : "user") as "user" | "assistant",
             content: m.content
         })).concat([{ role: "user", content: userMessage }]),
     });
